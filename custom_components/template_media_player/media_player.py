@@ -1,28 +1,33 @@
-"""Support for Template Media Players."""
+"""Template Media Player Component for Home Assistant."""
+
 from __future__ import annotations
 
-from functools import cached_property
+from dataclasses import asdict
 import logging
 from typing import Any
 
 import voluptuous as vol
 
 from homeassistant.components.media_player import (
-    PLATFORM_SCHEMA,
+    DOMAIN as MEDIA_PLAYER_DOMAIN,
+    PLATFORM_SCHEMA as MEDIA_PLAYER_PLATFORM_SCHEMA,
+    BrowseMedia,
     MediaPlayerEntity,
     MediaPlayerEntityFeature,
     MediaPlayerState,
+    MediaType,
+    async_process_play_media_url,
 )
+from homeassistant.components.media_source import (
+    async_resolve_media,
+    is_media_source_id,
+)
+from homeassistant.components.template.template_entity import TemplateEntity
 from homeassistant.const import (
-    CONF_FRIENDLY_NAME,
+    CONF_DEVICE_CLASS,
+    CONF_ICON,
+    CONF_NAME,
     CONF_UNIQUE_ID,
-    STATE_IDLE,
-    STATE_OFF,
-    STATE_ON,
-    STATE_PAUSED,
-    STATE_PLAYING,
-    STATE_UNAVAILABLE,
-    STATE_UNKNOWN,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import TemplateError
@@ -30,104 +35,77 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.script import Script
 from homeassistant.helpers.template import Template
+from homeassistant.helpers.trigger import async_attach_trigger
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from .const import (
-    CONF_APP_NAME_TEMPLATE,
-    CONF_AVAILABILITY_TEMPLATE,
-    CONF_ENTITY_PICTURE_TEMPLATE,
-    CONF_ICON_TEMPLATE,
-    CONF_IS_VOLUME_MUTED_TEMPLATE,
-    CONF_MEDIA_ALBUM_NAME_TEMPLATE,
-    CONF_MEDIA_ARTIST_TEMPLATE,
-    CONF_MEDIA_CONTENT_ID_TEMPLATE,
-    CONF_MEDIA_CONTENT_TYPE_TEMPLATE,
-    CONF_MEDIA_DURATION_TEMPLATE,
-    CONF_MEDIA_IMAGE_URL_TEMPLATE,
+    CONF_ATTRIBUTES,
+    CONF_AVAILABILITY,
+    CONF_BASE_MEDIA_PLAYER_ENTITY_ID,
+    CONF_BROWSE_MEDIA_ENTITY_ID,
+    CONF_BROWSE_MEDIA_SCRIPT,
+    CONF_MEDIA_NEXT_TRACK_SCRIPT,
+    CONF_MEDIA_PAUSE_SCRIPT,
+    CONF_MEDIA_PLAY_SCRIPT,
     CONF_MEDIA_PLAYERS,
-    CONF_MEDIA_POSITION_TEMPLATE,
-    CONF_MEDIA_POSITION_UPDATED_AT_TEMPLATE,
-    CONF_MEDIA_TITLE_TEMPLATE,
-    CONF_PAUSE_ACTION,
-    CONF_PLAY_ACTION,
-    CONF_PLAY_MEDIA_ACTION,
-    CONF_REPEAT_TEMPLATE,
-    CONF_SHUFFLE_TEMPLATE,
-    CONF_SOUND_MODE_LIST_TEMPLATE,
-    CONF_SOUND_MODE_TEMPLATE,
-    CONF_SOURCE_LIST_TEMPLATE,
-    CONF_SOURCE_TEMPLATE,
-    CONF_TURN_OFF_ACTION,
-    CONF_TURN_ON_ACTION,
-    CONF_VALUE_TEMPLATE,
-    CONF_VOLUME_DOWN_ACTION,
-    CONF_VOLUME_LEVEL_TEMPLATE,
-    CONF_VOLUME_MUTE_ACTION,
-    CONF_VOLUME_SET_ACTION,
-    CONF_VOLUME_UP_ACTION,
-    CONF_MEDIA_NEXT_TRACK_ACTION,
-    CONF_MEDIA_PREVIOUS_TRACK_ACTION,
-    CONF_MEDIA_SEEK_ACTION,
-    CONF_SELECT_SOURCE_ACTION,
-    CONF_SELECT_SOUND_MODE_ACTION,
-    CONF_SHUFFLE_SET_ACTION,
-    CONF_REPEAT_SET_ACTION,
-    CONF_STOP_ACTION,
+    CONF_MEDIA_PREVIOUS_TRACK_SCRIPT,
+    CONF_MEDIA_SEEK_SCRIPT,
+    CONF_MEDIA_STOP_SCRIPT,
+    CONF_PICTURE,
+    CONF_PLAY_MEDIA_SCRIPT,
+    CONF_REPEAT_SET_SCRIPT,
+    CONF_SEARCH_MEDIA_ENTITY_ID,
+    CONF_SEARCH_MEDIA_SCRIPT,
+    CONF_SERVICE_SCRIPTS,
+    CONF_SHUFFLE_SET_SCRIPT,
+    CONF_SOUND_MODE_SCRIPTS,
+    CONF_SOURCE_SCRIPTS,
+    CONF_STATE,
+    CONF_TRIGGERS,
+    CONF_TURN_OFF_SCRIPT,
+    CONF_TURN_ON_SCRIPT,
+    CONF_VARIABLES,
+    CONF_VOLUME_DOWN_SCRIPT,
+    CONF_VOLUME_MUTE_SCRIPT,
+    CONF_VOLUME_SET_SCRIPT,
+    CONF_VOLUME_UP_SCRIPT,
+    DOMAIN,
 )
-from homeassistant.components.template.entity import TemplateEntity
-from homeassistant.helpers.event import TrackTemplate
 
 _LOGGER = logging.getLogger(__name__)
 
 MEDIA_PLAYER_SCHEMA = vol.Schema(
     {
-        vol.Optional(CONF_FRIENDLY_NAME): cv.string,
+        vol.Optional(CONF_NAME): cv.template,
         vol.Optional(CONF_UNIQUE_ID): cv.string,
-        vol.Optional(CONF_VALUE_TEMPLATE): cv.template,
-        vol.Optional(CONF_ICON_TEMPLATE): cv.template,
-        vol.Optional(CONF_ENTITY_PICTURE_TEMPLATE): cv.template,
-        vol.Optional(CONF_AVAILABILITY_TEMPLATE): cv.template,
-        # Media player specific templates
-        vol.Optional(CONF_SOURCE_TEMPLATE): cv.template,
-        vol.Optional(CONF_SOURCE_LIST_TEMPLATE): cv.template,
-        vol.Optional(CONF_VOLUME_LEVEL_TEMPLATE): cv.template,
-        vol.Optional(CONF_IS_VOLUME_MUTED_TEMPLATE): cv.template,
-        vol.Optional(CONF_MEDIA_TITLE_TEMPLATE): cv.template,
-        vol.Optional(CONF_MEDIA_ARTIST_TEMPLATE): cv.template,
-        vol.Optional(CONF_MEDIA_ALBUM_NAME_TEMPLATE): cv.template,
-        vol.Optional(CONF_MEDIA_CONTENT_ID_TEMPLATE): cv.template,
-        vol.Optional(CONF_MEDIA_CONTENT_TYPE_TEMPLATE): cv.template,
-        vol.Optional(CONF_MEDIA_DURATION_TEMPLATE): cv.template,
-        vol.Optional(CONF_MEDIA_POSITION_TEMPLATE): cv.template,
-        vol.Optional(CONF_MEDIA_POSITION_UPDATED_AT_TEMPLATE): cv.template,
-        vol.Optional(CONF_MEDIA_IMAGE_URL_TEMPLATE): cv.template,
-        vol.Optional(CONF_REPEAT_TEMPLATE): cv.template,
-        vol.Optional(CONF_SHUFFLE_TEMPLATE): cv.template,
-        vol.Optional(CONF_APP_NAME_TEMPLATE): cv.template,
-        vol.Optional(CONF_SOUND_MODE_TEMPLATE): cv.template,
-        vol.Optional(CONF_SOUND_MODE_LIST_TEMPLATE): cv.template,
-        # Actions
-        vol.Optional(CONF_TURN_ON_ACTION): cv.SCRIPT_SCHEMA,
-        vol.Optional(CONF_TURN_OFF_ACTION): cv.SCRIPT_SCHEMA,
-        vol.Optional(CONF_PLAY_MEDIA_ACTION): cv.SCRIPT_SCHEMA,
-        vol.Optional(CONF_PLAY_ACTION): cv.SCRIPT_SCHEMA,
-        vol.Optional(CONF_PAUSE_ACTION): cv.SCRIPT_SCHEMA,
-        vol.Optional(CONF_STOP_ACTION): cv.SCRIPT_SCHEMA,
-        vol.Optional(CONF_VOLUME_UP_ACTION): cv.SCRIPT_SCHEMA,
-        vol.Optional(CONF_VOLUME_DOWN_ACTION): cv.SCRIPT_SCHEMA,
-        vol.Optional(CONF_VOLUME_SET_ACTION): cv.SCRIPT_SCHEMA,
-        vol.Optional(CONF_VOLUME_MUTE_ACTION): cv.SCRIPT_SCHEMA,
-        vol.Optional(CONF_MEDIA_PREVIOUS_TRACK_ACTION): cv.SCRIPT_SCHEMA,
-        vol.Optional(CONF_MEDIA_NEXT_TRACK_ACTION): cv.SCRIPT_SCHEMA,
-        vol.Optional(CONF_MEDIA_SEEK_ACTION): cv.SCRIPT_SCHEMA,
-        vol.Optional(CONF_SELECT_SOURCE_ACTION): cv.SCRIPT_SCHEMA,
-        vol.Optional(CONF_SELECT_SOUND_MODE_ACTION): cv.SCRIPT_SCHEMA,
-        vol.Optional(CONF_SHUFFLE_SET_ACTION): cv.SCRIPT_SCHEMA,
-        vol.Optional(CONF_REPEAT_SET_ACTION): cv.SCRIPT_SCHEMA,
+        vol.Optional(CONF_ICON): cv.template,
+        vol.Optional(CONF_PICTURE): cv.template,
+        vol.Optional(CONF_VARIABLES): cv.SCRIPT_VARIABLES_SCHEMA,
+        vol.Optional(CONF_ATTRIBUTES, default={}): cv.schema_with_slug_keys(
+            cv.template
+        ),
+        vol.Optional(CONF_DEVICE_CLASS): cv.string,
+        vol.Optional(CONF_STATE): cv.template,
+        vol.Optional(CONF_AVAILABILITY): cv.template,
+        vol.Optional(CONF_BASE_MEDIA_PLAYER_ENTITY_ID): cv.entity_id,
+        vol.Optional(CONF_SEARCH_MEDIA_ENTITY_ID): cv.entity_id,
+        vol.Optional(CONF_BROWSE_MEDIA_ENTITY_ID): cv.entity_id,
+        vol.Optional(CONF_SERVICE_SCRIPTS, default={}): cv.schema_with_slug_keys(
+            cv.SCRIPT_SCHEMA
+        ),
+        vol.Optional(CONF_SOUND_MODE_SCRIPTS, default={}): cv.schema_with_slug_keys(
+            cv.SCRIPT_SCHEMA
+        ),
+        vol.Optional(CONF_SOURCE_SCRIPTS, default={}): cv.schema_with_slug_keys(
+            cv.SCRIPT_SCHEMA
+        ),
+        vol.Optional(CONF_TRIGGERS, default=[]): vol.All(
+            cv.ensure_list, [cv.TRIGGER_SCHEMA]
+        ),
     }
 )
 
-PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
+PLATFORM_SCHEMA = MEDIA_PLAYER_PLATFORM_SCHEMA.extend(
     {vol.Required(CONF_MEDIA_PLAYERS): cv.schema_with_slug_keys(MEDIA_PLAYER_SCHEMA)}
 )
 
@@ -138,461 +116,418 @@ async def async_setup_platform(
     async_add_entities: AddEntitiesCallback,
     discovery_info: DiscoveryInfoType | None = None,
 ) -> None:
-    """Set up the Template Media Player."""
-    media_players = []
-
-    for device, device_config in config[CONF_MEDIA_PLAYERS].items():
-        friendly_name = device_config.get(CONF_FRIENDLY_NAME, device)
-        unique_id = device_config.get(CONF_UNIQUE_ID)
-
-        state_template = device_config.get(CONF_VALUE_TEMPLATE)
-        icon_template = device_config.get(CONF_ICON_TEMPLATE)
-        entity_picture_template = device_config.get(CONF_ENTITY_PICTURE_TEMPLATE)
-        availability_template = device_config.get(CONF_AVAILABILITY_TEMPLATE)
-
-        templates = {
-            "state": state_template,
-            "icon": icon_template,
-            "entity_picture": entity_picture_template,
-            "availability": availability_template,
-            "source": device_config.get(CONF_SOURCE_TEMPLATE),
-            "source_list": device_config.get(CONF_SOURCE_LIST_TEMPLATE),
-            "volume_level": device_config.get(CONF_VOLUME_LEVEL_TEMPLATE),
-            "is_volume_muted": device_config.get(CONF_IS_VOLUME_MUTED_TEMPLATE),
-            "media_title": device_config.get(CONF_MEDIA_TITLE_TEMPLATE),
-            "media_artist": device_config.get(CONF_MEDIA_ARTIST_TEMPLATE),
-            "media_album_name": device_config.get(CONF_MEDIA_ALBUM_NAME_TEMPLATE),
-            "media_content_id": device_config.get(CONF_MEDIA_CONTENT_ID_TEMPLATE),
-            "media_content_type": device_config.get(CONF_MEDIA_CONTENT_TYPE_TEMPLATE),
-            "media_duration": device_config.get(CONF_MEDIA_DURATION_TEMPLATE),
-            "media_position": device_config.get(CONF_MEDIA_POSITION_TEMPLATE),
-            "media_position_updated_at": device_config.get(
-                CONF_MEDIA_POSITION_UPDATED_AT_TEMPLATE
-            ),
-            "media_image_url": device_config.get(CONF_MEDIA_IMAGE_URL_TEMPLATE),
-            "repeat": device_config.get(CONF_REPEAT_TEMPLATE),
-            "shuffle": device_config.get(CONF_SHUFFLE_TEMPLATE),
-            "app_name": device_config.get(CONF_APP_NAME_TEMPLATE),
-            "sound_mode": device_config.get(CONF_SOUND_MODE_TEMPLATE),
-            "sound_mode_list": device_config.get(CONF_SOUND_MODE_LIST_TEMPLATE),
-        }
-
-        actions = {
-            "turn_on": device_config.get(CONF_TURN_ON_ACTION),
-            "turn_off": device_config.get(CONF_TURN_OFF_ACTION),
-            "play_media": device_config.get(CONF_PLAY_MEDIA_ACTION),
-            "play": device_config.get(CONF_PLAY_ACTION),
-            "pause": device_config.get(CONF_PAUSE_ACTION),
-            "stop": device_config.get(CONF_STOP_ACTION),
-            "volume_up": device_config.get(CONF_VOLUME_UP_ACTION),
-            "volume_down": device_config.get(CONF_VOLUME_DOWN_ACTION),
-            "volume_set": device_config.get(CONF_VOLUME_SET_ACTION),
-            "volume_mute": device_config.get(CONF_VOLUME_MUTE_ACTION),
-            "media_previous_track": device_config.get(CONF_MEDIA_PREVIOUS_TRACK_ACTION),
-            "media_next_track": device_config.get(CONF_MEDIA_NEXT_TRACK_ACTION),
-            "media_seek": device_config.get(CONF_MEDIA_SEEK_ACTION),
-            "select_source": device_config.get(CONF_SELECT_SOURCE_ACTION),
-            "select_sound_mode": device_config.get(CONF_SELECT_SOUND_MODE_ACTION),
-            "shuffle_set": device_config.get(CONF_SHUFFLE_SET_ACTION),
-            "repeat_set": device_config.get(CONF_REPEAT_SET_ACTION),
-        }
-
-        media_players.append(
-            TemplateMediaPlayer(
-                hass,
-                device,
-                friendly_name,
-                unique_id,
-                templates,
-                actions,
-            )
-        )
-
-    async_add_entities(media_players)
+    """Set up the template media players."""
+    entities = []
+    for name, cfg in config[CONF_MEDIA_PLAYERS].items():
+        entities.append(TemplateMediaPlayer(hass, cfg, name))
+    async_add_entities(entities)
 
 
 class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
-    """Representation of a Template Media Player."""
+    """A template-driven media player that behaves like native template entities."""
+
+    _attr_should_poll = False
 
     def __init__(
-        self,
-        hass: HomeAssistant,
-        device_id: str,
-        friendly_name: str,
-        unique_id: str | None,
-        templates: dict[str, Template | None],
-        actions: dict[str, Any],
+        self, hass: HomeAssistant, config: dict[str, Any], object_id: str
     ) -> None:
-        """Initialize the Template Media Player."""
-        # Initialize TemplateEntity with basic configuration
-        super().__init__(
-            hass,
-            availability_template=templates.get("availability"),
-            icon_template=templates.get("icon"),
-            entity_picture_template=templates.get("entity_picture"),
+        """Initialize the template media player."""
+        # Initialize TemplateEntity with config and unique_id
+        TemplateEntity.__init__(
+            self, hass, config=config, unique_id=config.get(CONF_UNIQUE_ID, object_id)
         )
-        
-        self._attr_name = friendly_name
-        self._attr_unique_id = unique_id
-        self._device_id = device_id
-        self._templates = templates
-        self._actions = actions
-        self._context = None
 
-        # Initialize scripts for actions
-        self._scripts = {}
-        for action_name, action_config in actions.items():
-            if action_config is not None:
-                self._scripts[action_name] = Script(
-                    hass,
-                    action_config,
-                    friendly_name,
-                    "template_media_player",
-                )
+        self._object_id = object_id
+        self._state_template: Template | None = config.get(CONF_STATE)
+        self._availability_template: Template | None = config.get(CONF_AVAILABILITY)
+        self._icon_template: Template | None = config.get(CONF_ICON)
+        self._picture_template: Template | None = config.get(CONF_PICTURE)
+        self._name_template: Template | None = config.get(CONF_NAME)
+
+        self._attribute_templates: dict[str, Template] = config.get(
+            CONF_ATTRIBUTES, {}
+        )
+
+        # Optional entity references for delegating functionality
+        self._base_entity_id = config.get(CONF_BASE_MEDIA_PLAYER_ENTITY_ID)
+        self._search_entity_id = config.get(CONF_SEARCH_MEDIA_ENTITY_ID)
+        self._browse_entity_id = config.get(CONF_BROWSE_MEDIA_ENTITY_ID)
+
+        # Service scripts with slug keys
+        self._service_scripts = {
+            svc: Script(hass, script, object_id, DOMAIN)
+            for svc, script in config.get(CONF_SERVICE_SCRIPTS, {}).items()
+        }
+        self._source_scripts = {
+            src: Script(hass, script, object_id, DOMAIN)
+            for src, script in config.get(CONF_SOURCE_SCRIPTS, {}).items()
+        }
+        self._sound_mode_scripts = {
+            sm: Script(hass, script, object_id, DOMAIN)
+            for sm, script in config.get(CONF_SOUND_MODE_SCRIPTS, {}).items()
+        }
+
+        # Trigger configuration for trigger-based updates
+        self._trigger_configs = config.get(CONF_TRIGGERS, [])
+
+        # State storage
+        self._state: MediaPlayerState | None = None
+        self._available: bool = True
+        self._icon: str | None = None
+        self._picture: str | None = None
+        self._name: str | None = None
+
+        # Device class
+        self._attr_device_class = config.get(CONF_DEVICE_CLASS)
 
     async def async_added_to_hass(self) -> None:
-        """Register callbacks and track template changes."""
-        # First, call the parent's async_added_to_hass to set up basic template tracking
-        await super().async_added_to_hass()
-        
-        # Add tracking for media player specific templates
-        track_templates = []
-        for attr_name, template in self._templates.items():
-            if attr_name not in ("icon", "entity_picture", "availability") and template is not None:
-                track_templates.append(TrackTemplate(template, None))
-        
-        # Track the additional templates
-        if track_templates:
-            from homeassistant.helpers.event import async_track_template_result
-            self.async_on_remove(
-                async_track_template_result(
-                    self.hass,
-                    track_templates,
-                    self._handle_media_template_update,
-                )
+        """Register template tracking and optional triggers."""
+        # Register state template
+        if self._state_template:
+            self.add_template_attribute(
+                "_state",
+                self._state_template,
+                validator=lambda v: MediaPlayerState(v) if v else None,
+                none_on_template_error=True,
             )
 
-    @callback
-    def _handle_media_template_update(self, event, updates) -> None:
-        """Handle updates of media player templates."""
-        self.async_write_ha_state()
+        # Register availability template
+        if self._availability_template:
+            self.add_template_attribute(
+                "_available",
+                self._availability_template,
+                validator=bool,
+            )
 
-    def _get_template_value(self, template: Template | None) -> Any:
-        """Get the value of a template."""
-        if template is None:
+        # Register icon template
+        if self._icon_template:
+            self.add_template_attribute("_icon", self._icon_template)
+
+        # Register picture template
+        if self._picture_template:
+            self.add_template_attribute("_picture", self._picture_template)
+
+        # Register name template
+        if self._name_template:
+            self.add_template_attribute("_name", self._name_template)
+
+        # Register custom attribute templates
+        for attr, tmpl in self._attribute_templates.items():
+            self.add_template_attribute(
+                f"_attr_{attr}",
+                tmpl,
+                none_on_template_error=True,
+            )
+
+        # Set up triggers for trigger-based updates (like native template entities)
+        if self._trigger_configs:
+            for trigger_conf in self._trigger_configs:
+                await async_attach_trigger(
+                    self.hass,
+                    trigger_conf,
+                    lambda *args: self.async_write_ha_state(),
+                    self.entity_id,
+                )
+
+        await super().async_added_to_hass()
+
+    # =================================================
+    # HELPER METHODS TO GET REFERENCED ENTITIES
+    # =================================================
+
+    def _get_base_entity(self) -> MediaPlayerEntity | None:
+        """Get the base media player entity if configured."""
+        if not self._base_entity_id:
             return None
-        
-        try:
-            # Use render() instead of async_render() since this is called from properties
-            return template.render()
-        except TemplateError as err:
-            _LOGGER.error("Error rendering template: %s", err)
+        return self.hass.data.get(MEDIA_PLAYER_DOMAIN, {}).get_entity(
+            self._base_entity_id
+        )
+
+    def _get_search_entity(self) -> MediaPlayerEntity | None:
+        """Get the search media player entity if configured."""
+        if not self._search_entity_id:
             return None
+        return self.hass.data.get(MEDIA_PLAYER_DOMAIN, {}).get_entity(
+            self._search_entity_id
+        )
 
-    @cached_property
-    def supported_features(self) -> MediaPlayerEntityFeature:
-        """Flag media player features that are supported."""
-        features = MediaPlayerEntityFeature(0)
+    def _get_browse_entity(self) -> MediaPlayerEntity | None:
+        """Get the browse media player entity if configured."""
+        if not self._browse_entity_id:
+            return None
+        return self.hass.data.get(MEDIA_PLAYER_DOMAIN, {}).get_entity(
+            self._browse_entity_id
+        )
 
-        if self._scripts.get("turn_on"):
-            features |= MediaPlayerEntityFeature.TURN_ON
-        if self._scripts.get("turn_off"):
-            features |= MediaPlayerEntityFeature.TURN_OFF
-        if self._scripts.get("play_media"):
-            features |= MediaPlayerEntityFeature.PLAY_MEDIA
-        if self._scripts.get("play"):
-            features |= MediaPlayerEntityFeature.PLAY
-        if self._scripts.get("pause"):
-            features |= MediaPlayerEntityFeature.PAUSE
-        if self._scripts.get("stop"):
-            features |= MediaPlayerEntityFeature.STOP
-        if self._scripts.get("volume_up") or self._scripts.get("volume_down"):
-            features |= MediaPlayerEntityFeature.VOLUME_STEP
-        if self._scripts.get("volume_set"):
-            features |= MediaPlayerEntityFeature.VOLUME_SET
-        if self._scripts.get("volume_mute"):
-            features |= MediaPlayerEntityFeature.VOLUME_MUTE
-        if self._scripts.get("media_previous_track"):
-            features |= MediaPlayerEntityFeature.PREVIOUS_TRACK
-        if self._scripts.get("media_next_track"):
-            features |= MediaPlayerEntityFeature.NEXT_TRACK
-        if self._scripts.get("media_seek"):
-            features |= MediaPlayerEntityFeature.SEEK
-        if self._scripts.get("select_source"):
-            features |= MediaPlayerEntityFeature.SELECT_SOURCE
-        if self._scripts.get("select_sound_mode"):
-            features |= MediaPlayerEntityFeature.SELECT_SOUND_MODE
-        if self._scripts.get("shuffle_set"):
-            features |= MediaPlayerEntityFeature.SHUFFLE_SET
-        if self._scripts.get("repeat_set"):
-            features |= MediaPlayerEntityFeature.REPEAT_SET
+    # =================================================
+    # PROPERTIES
+    # =================================================
 
-        return features
+    @property
+    def name(self) -> str | None:
+        """Return the name of the entity."""
+        if self._name:
+            return self._name
+        return self._object_id
+
+    @property
+    def available(self) -> bool:
+        """Return if the entity is available."""
+        return self._available
+
+    @property
+    def icon(self) -> str | None:
+        """Return the icon."""
+        return self._icon
+
+    @property
+    def entity_picture(self) -> str | None:
+        """Return the entity picture."""
+        return self._picture
 
     @property
     def state(self) -> MediaPlayerState | None:
         """Return the state of the player."""
-        state_template = self._templates.get("state")
-        if state_template is None:
-            return None
-
-        state_value = self._get_template_value(state_template)
-        if state_value is None:
-            return None
-
-        # Convert string state to MediaPlayerState
-        state_str = str(state_value).lower()
-        
-        if state_str in (STATE_PLAYING, "on"):
-            return MediaPlayerState.PLAYING
-        elif state_str == STATE_PAUSED:
-            return MediaPlayerState.PAUSED
-        elif state_str in (STATE_IDLE, "idle"):
-            return MediaPlayerState.IDLE
-        elif state_str in (STATE_OFF, "off"):
-            return MediaPlayerState.OFF
-        elif state_str == STATE_UNAVAILABLE:
-            return None
-        
-        return MediaPlayerState.IDLE
+        if self._state:
+            return self._state
+        # Fall back to base entity if no template state
+        if base := self._get_base_entity():
+            return base.state
+        return None
 
     @property
-    def source(self) -> str | None:
-        """Return the current input source."""
-        return self._get_template_value(self._templates.get("source"))
+    def supported_features(self) -> MediaPlayerEntityFeature:
+        """Flag media player features that are supported."""
+        # Start with base entity features if available
+        base = self._get_base_entity()
+        features = (
+            base.supported_features if base else MediaPlayerEntityFeature(0)
+        )
+
+        # Add features based on configured scripts
+        if CONF_TURN_ON_SCRIPT in self._service_scripts:
+            features |= MediaPlayerEntityFeature.TURN_ON
+        if CONF_TURN_OFF_SCRIPT in self._service_scripts:
+            features |= MediaPlayerEntityFeature.TURN_OFF
+        if CONF_MEDIA_PLAY_SCRIPT in self._service_scripts:
+            features |= MediaPlayerEntityFeature.PLAY
+        if CONF_MEDIA_PAUSE_SCRIPT in self._service_scripts:
+            features |= MediaPlayerEntityFeature.PAUSE
+        if CONF_MEDIA_STOP_SCRIPT in self._service_scripts:
+            features |= MediaPlayerEntityFeature.STOP
+        if CONF_PLAY_MEDIA_SCRIPT in self._service_scripts:
+            features |= MediaPlayerEntityFeature.PLAY_MEDIA
+        if (
+            CONF_VOLUME_UP_SCRIPT in self._service_scripts
+            or CONF_VOLUME_DOWN_SCRIPT in self._service_scripts
+        ):
+            features |= MediaPlayerEntityFeature.VOLUME_STEP
+        if CONF_VOLUME_SET_SCRIPT in self._service_scripts:
+            features |= MediaPlayerEntityFeature.VOLUME_SET
+        if CONF_VOLUME_MUTE_SCRIPT in self._service_scripts:
+            features |= MediaPlayerEntityFeature.VOLUME_MUTE
+        if CONF_MEDIA_PREVIOUS_TRACK_SCRIPT in self._service_scripts:
+            features |= MediaPlayerEntityFeature.PREVIOUS_TRACK
+        if CONF_MEDIA_NEXT_TRACK_SCRIPT in self._service_scripts:
+            features |= MediaPlayerEntityFeature.NEXT_TRACK
+        if CONF_MEDIA_SEEK_SCRIPT in self._service_scripts:
+            features |= MediaPlayerEntityFeature.SEEK
+        if self._source_scripts:
+            features |= MediaPlayerEntityFeature.SELECT_SOURCE
+        if self._sound_mode_scripts:
+            features |= MediaPlayerEntityFeature.SELECT_SOUND_MODE
+        if CONF_SHUFFLE_SET_SCRIPT in self._service_scripts:
+            features |= MediaPlayerEntityFeature.SHUFFLE_SET
+        if CONF_REPEAT_SET_SCRIPT in self._service_scripts:
+            features |= MediaPlayerEntityFeature.REPEAT_SET
+        if self._browse_entity_id or CONF_BROWSE_MEDIA_SCRIPT in self._service_scripts:
+            features |= MediaPlayerEntityFeature.BROWSE_MEDIA
+
+        return features
 
     @property
     def source_list(self) -> list[str] | None:
         """Return the list of available input sources."""
-        source_list = self._get_template_value(self._templates.get("source_list"))
-        if isinstance(source_list, list):
-            return source_list
+        if self._source_scripts:
+            return list(self._source_scripts.keys())
+        if base := self._get_base_entity():
+            return base.source_list
         return None
-
-    @property
-    def volume_level(self) -> float | None:
-        """Return the volume level."""
-        volume = self._get_template_value(self._templates.get("volume_level"))
-        if volume is not None:
-            try:
-                return float(volume)
-            except (ValueError, TypeError):
-                return None
-        return None
-
-    @property
-    def is_volume_muted(self) -> bool | None:
-        """Return boolean if volume is muted."""
-        muted = self._get_template_value(self._templates.get("is_volume_muted"))
-        if muted is not None:
-            return bool(muted)
-        return None
-
-    @property
-    def media_content_id(self) -> str | None:
-        """Return the content ID of current playing media."""
-        return self._get_template_value(self._templates.get("media_content_id"))
-
-    @property
-    def media_content_type(self) -> str | None:
-        """Return the content type of current playing media."""
-        return self._get_template_value(self._templates.get("media_content_type"))
-
-    @property
-    def media_duration(self) -> int | None:
-        """Return the duration of current playing media in seconds."""
-        duration = self._get_template_value(self._templates.get("media_duration"))
-        if duration is not None:
-            try:
-                return int(duration)
-            except (ValueError, TypeError):
-                return None
-        return None
-
-    @property
-    def media_position(self) -> int | None:
-        """Return the position of current playing media in seconds."""
-        position = self._get_template_value(self._templates.get("media_position"))
-        if position is not None:
-            try:
-                return int(position)
-            except (ValueError, TypeError):
-                return None
-        return None
-
-    @property
-    def media_position_updated_at(self):
-        """Return when the position was last updated."""
-        return self._get_template_value(
-            self._templates.get("media_position_updated_at")
-        )
-
-    @property
-    def media_image_url(self) -> str | None:
-        """Return the image URL of current playing media."""
-        return self._get_template_value(self._templates.get("media_image_url"))
-
-    @property
-    def media_title(self) -> str | None:
-        """Return the title of current playing media."""
-        return self._get_template_value(self._templates.get("media_title"))
-
-    @property
-    def media_artist(self) -> str | None:
-        """Return the artist of current playing media."""
-        return self._get_template_value(self._templates.get("media_artist"))
-
-    @property
-    def media_album_name(self) -> str | None:
-        """Return the album name of current playing media."""
-        return self._get_template_value(self._templates.get("media_album_name"))
-
-    @property
-    def repeat(self) -> str | None:
-        """Return the repeat mode."""
-        return self._get_template_value(self._templates.get("repeat"))
-
-    @property
-    def shuffle(self) -> bool | None:
-        """Return boolean if shuffle is enabled."""
-        shuffle = self._get_template_value(self._templates.get("shuffle"))
-        if shuffle is not None:
-            return bool(shuffle)
-        return None
-
-    @property
-    def app_name(self) -> str | None:
-        """Return the app name."""
-        return self._get_template_value(self._templates.get("app_name"))
-
-    @property
-    def sound_mode(self) -> str | None:
-        """Return the current sound mode."""
-        return self._get_template_value(self._templates.get("sound_mode"))
 
     @property
     def sound_mode_list(self) -> list[str] | None:
         """Return the list of available sound modes."""
-        sound_mode_list = self._get_template_value(
-            self._templates.get("sound_mode_list")
-        )
-        if isinstance(sound_mode_list, list):
-            return sound_mode_list
+        if self._sound_mode_scripts:
+            return list(self._sound_mode_scripts.keys())
+        if base := self._get_base_entity():
+            return base.sound_mode_list
         return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the extra state attributes."""
+        attrs = {}
+        for attr in self._attribute_templates:
+            value = getattr(self, f"_attr_{attr}", None)
+            if value is not None:
+                attrs[attr] = value
+        return attrs
+
+    # =================================================
+    # COMMAND METHODS
+    # =================================================
+
+    def _render_script_variables(self) -> dict[str, Any]:
+        """Render template variables for scripts."""
+        # This would render CONF_VARIABLES if needed
+        # For now, return empty dict
+        return {}
+
+    async def _run_script(
+        self, script_key: str, variables: dict[str, Any] | None = None
+    ) -> None:
+        """Run a service script or delegate to base entity."""
+        script = self._service_scripts.get(script_key)
+        if script:
+            script_vars = {**(variables or {}), **self._render_script_variables()}
+            await script.async_run(script_vars, context=self._context)
+            return
+
+        # Fall back to base entity if no script configured
+        base = self._get_base_entity()
+        if base:
+            method_name = f"async_{script_key}"
+            method = getattr(base, method_name, None)
+            if method and callable(method):
+                if variables:
+                    await method(**variables)
+                else:
+                    await method()
 
     async def async_turn_on(self) -> None:
         """Turn the media player on."""
-        if script := self._scripts.get("turn_on"):
-            await script.async_run(context=self._context)
+        await self._run_script(CONF_TURN_ON_SCRIPT)
 
     async def async_turn_off(self) -> None:
         """Turn the media player off."""
-        if script := self._scripts.get("turn_off"):
-            await script.async_run(context=self._context)
+        await self._run_script(CONF_TURN_OFF_SCRIPT)
+
+    async def async_media_play(self) -> None:
+        """Send play command."""
+        await self._run_script(CONF_MEDIA_PLAY_SCRIPT)
+
+    async def async_media_pause(self) -> None:
+        """Send pause command."""
+        await self._run_script(CONF_MEDIA_PAUSE_SCRIPT)
+
+    async def async_media_stop(self) -> None:
+        """Send stop command."""
+        await self._run_script(CONF_MEDIA_STOP_SCRIPT)
+
+    async def async_media_previous_track(self) -> None:
+        """Send previous track command."""
+        await self._run_script(CONF_MEDIA_PREVIOUS_TRACK_SCRIPT)
+
+    async def async_media_next_track(self) -> None:
+        """Send next track command."""
+        await self._run_script(CONF_MEDIA_NEXT_TRACK_SCRIPT)
+
+    async def async_media_seek(self, position: float) -> None:
+        """Send seek command."""
+        await self._run_script(CONF_MEDIA_SEEK_SCRIPT, {"position": position})
+
+    async def async_volume_up(self) -> None:
+        """Turn volume up."""
+        await self._run_script(CONF_VOLUME_UP_SCRIPT)
+
+    async def async_volume_down(self) -> None:
+        """Turn volume down."""
+        await self._run_script(CONF_VOLUME_DOWN_SCRIPT)
+
+    async def async_set_volume_level(self, volume: float) -> None:
+        """Set volume level."""
+        await self._run_script(CONF_VOLUME_SET_SCRIPT, {"volume_level": volume})
+
+    async def async_mute_volume(self, mute: bool) -> None:
+        """Mute the volume."""
+        await self._run_script(CONF_VOLUME_MUTE_SCRIPT, {"is_volume_muted": mute})
+
+    async def async_set_shuffle(self, shuffle: bool) -> None:
+        """Enable/disable shuffle mode."""
+        await self._run_script(CONF_SHUFFLE_SET_SCRIPT, {"shuffle": shuffle})
+
+    async def async_set_repeat(self, repeat: str) -> None:
+        """Set repeat mode."""
+        await self._run_script(CONF_REPEAT_SET_SCRIPT, {"repeat": repeat})
+
+    async def async_select_source(self, source: str) -> None:
+        """Select input source."""
+        if source in self._source_scripts:
+            script = self._source_scripts[source]
+            await script.async_run(
+                self._render_script_variables(), context=self._context
+            )
+        elif base := self._get_base_entity():
+            await base.async_select_source(source)
+
+    async def async_select_sound_mode(self, sound_mode: str) -> None:
+        """Select sound mode."""
+        if sound_mode in self._sound_mode_scripts:
+            script = self._sound_mode_scripts[sound_mode]
+            await script.async_run(
+                self._render_script_variables(), context=self._context
+            )
+        elif base := self._get_base_entity():
+            await base.async_select_sound_mode(sound_mode)
 
     async def async_play_media(
         self, media_type: str, media_id: str, **kwargs: Any
     ) -> None:
         """Play a piece of media."""
-        if script := self._scripts.get("play_media"):
-            await script.async_run(
-                variables={
-                    "media_type": media_type,
-                    "media_id": media_id,
+        # Handle media source URLs
+        if is_media_source_id(media_id):
+            item = await async_resolve_media(self.hass, media_id, self.entity_id)
+            media_id = async_process_play_media_url(self.hass, item.url)
+            media_type = MediaType.MUSIC
+
+        # Try script first
+        if CONF_PLAY_MEDIA_SCRIPT in self._service_scripts:
+            await self._run_script(
+                CONF_PLAY_MEDIA_SCRIPT,
+                {"media_type": media_type, "media_id": media_id},
+            )
+            return
+
+        # Fall back to browse entity
+        if browse := self._get_browse_entity():
+            await browse.async_play_media(media_type, media_id, **kwargs)
+            return
+
+        # Fall back to base entity
+        if base := self._get_base_entity():
+            await base.async_play_media(media_type, media_id, **kwargs)
+
+    async def async_browse_media(
+        self,
+        media_content_type: str | None = None,
+        media_content_id: str | None = None,
+    ) -> BrowseMedia | None:
+        """Browse media."""
+        # Try browse entity first
+        if browse := self._get_browse_entity():
+            return await browse.async_browse_media(
+                media_content_type, media_content_id
+            )
+
+        # Try script
+        if CONF_BROWSE_MEDIA_SCRIPT in self._service_scripts:
+            await self._run_script(
+                CONF_BROWSE_MEDIA_SCRIPT,
+                {
+                    "media_content_type": media_content_type,
+                    "media_content_id": media_content_id,
                 },
-                context=self._context,
             )
+            return None
 
-    async def async_media_pause(self) -> None:
-        """Pause the media player."""
-        if script := self._scripts.get("pause"):
-            await script.async_run(context=self._context)
-
-    async def async_media_play(self) -> None:
-        """Play the media player."""
-        # Use dedicated play action if available, otherwise fall back to turn_on
-        if script := self._scripts.get("play"):
-            await script.async_run(context=self._context)
-        elif script := self._scripts.get("turn_on"):
-            await script.async_run(context=self._context)
-
-    async def async_media_stop(self) -> None:
-        """Stop the media player."""
-        if script := self._scripts.get("stop"):
-            await script.async_run(context=self._context)
-
-    async def async_volume_up(self) -> None:
-        """Volume up the media player."""
-        if script := self._scripts.get("volume_up"):
-            await script.async_run(context=self._context)
-
-    async def async_volume_down(self) -> None:
-        """Volume down the media player."""
-        if script := self._scripts.get("volume_down"):
-            await script.async_run(context=self._context)
-
-    async def async_set_volume_level(self, volume: float) -> None:
-        """Set volume level."""
-        if script := self._scripts.get("volume_set"):
-            await script.async_run(
-                variables={"volume_level": volume},
-                context=self._context,
-            )
-
-    async def async_mute_volume(self, mute: bool) -> None:
-        """Mute the volume."""
-        if script := self._scripts.get("volume_mute"):
-            await script.async_run(
-                variables={"is_volume_muted": mute},
-                context=self._context,
-            )
-
-    async def async_media_previous_track(self) -> None:
-        """Send previous track command."""
-        if script := self._scripts.get("media_previous_track"):
-            await script.async_run(context=self._context)
-
-    async def async_media_next_track(self) -> None:
-        """Send next track command."""
-        if script := self._scripts.get("media_next_track"):
-            await script.async_run(context=self._context)
-
-    async def async_media_seek(self, position: float) -> None:
-        """Send seek command."""
-        if script := self._scripts.get("media_seek"):
-            await script.async_run(
-                variables={"seek_position": position},
-                context=self._context,
-            )
-
-    async def async_select_source(self, source: str) -> None:
-        """Select input source."""
-        if script := self._scripts.get("select_source"):
-            await script.async_run(
-                variables={"source": source},
-                context=self._context,
-            )
-
-    async def async_select_sound_mode(self, sound_mode: str) -> None:
-        """Select sound mode."""
-        if script := self._scripts.get("select_sound_mode"):
-            await script.async_run(
-                variables={"sound_mode": sound_mode},
-                context=self._context,
-            )
-
-    async def async_set_shuffle(self, shuffle: bool) -> None:
-        """Enable/disable shuffle mode."""
-        if script := self._scripts.get("shuffle_set"):
-            await script.async_run(
-                variables={"shuffle": shuffle},
-                context=self._context,
-            )
-
-    async def async_set_repeat(self, repeat: str) -> None:
-        """Set repeat mode."""
-        if script := self._scripts.get("repeat_set"):
-            await script.async_run(
-                variables={"repeat": repeat},
-                context=self._context,
-            )
+        return None

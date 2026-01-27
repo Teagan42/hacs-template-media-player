@@ -1,105 +1,261 @@
 # Example Configuration for Template Media Player
 #
-# This file shows various examples of how to configure the template_media_player component.
-# Add these configurations to your Home Assistant configuration.yaml file.
+# This file shows various examples of how to configure the template_media_player component
+# following the new schema with add_template_attribute, service_scripts, and triggers.
 
-# Example 1: Simple Proxy Media Player
-# This creates a template media player that mirrors another media player
+# Example 1: Simple Template Player with Custom Attributes
 media_player:
   - platform: template_media_player
     media_players:
-      proxy_player:
-        friendly_name: "Proxy Player"
-        unique_id: proxy_player_1
+      simple_player:
+        name: "Simple Player"
+        unique_id: simple_player_1
         
-        # Mirror the state of another media player
-        value_template: "{{ states('media_player.living_room_speaker') }}"
+        # State template using add_template_attribute internally
+        state: "{{ states('media_player.living_room_speaker') }}"
+        availability: "{{ states('media_player.living_room_speaker') != 'unavailable' }}"
         
-        # Mirror availability
-        availability_template: "{{ states('media_player.living_room_speaker') != 'unavailable' }}"
+        # Custom attributes using schema_with_slug_keys(cv.template)
+        attributes:
+          media_title: "{{ state_attr('media_player.living_room_speaker', 'media_title') }}"
+          media_artist: "{{ state_attr('media_player.living_room_speaker', 'media_artist') }}"
+          volume_level: "{{ state_attr('media_player.living_room_speaker', 'volume_level') }}"
+          is_volume_muted: "{{ state_attr('media_player.living_room_speaker', 'is_volume_muted') }}"
         
-        # Mirror media information
-        media_title_template: "{{ state_attr('media_player.living_room_speaker', 'media_title') }}"
-        media_artist_template: "{{ state_attr('media_player.living_room_speaker', 'media_artist') }}"
-        volume_level_template: "{{ state_attr('media_player.living_room_speaker', 'volume_level') }}"
-        
-        # Forward commands to the real player
-        turn_on:
-          service: media_player.turn_on
-          target:
-            entity_id: media_player.living_room_speaker
-            
-        turn_off:
-          service: media_player.turn_off
-          target:
-            entity_id: media_player.living_room_speaker
-            
-        volume_set:
-          service: media_player.volume_set
-          target:
-            entity_id: media_player.living_room_speaker
-          data:
-            volume_level: "{{ volume_level }}"
+        # Service scripts using schema_with_slug_keys(cv.SCRIPT_SCHEMA)
+        service_scripts:
+          turn_on:
+            service: media_player.turn_on
+            target:
+              entity_id: media_player.living_room_speaker
+          
+          turn_off:
+            service: media_player.turn_off
+            target:
+              entity_id: media_player.living_room_speaker
+          
+          media_play:
+            service: media_player.media_play
+            target:
+              entity_id: media_player.living_room_speaker
+          
+          media_pause:
+            service: media_player.media_pause
+            target:
+              entity_id: media_player.living_room_speaker
+          
+          volume_set:
+            service: media_player.volume_set
+            target:
+              entity_id: media_player.living_room_speaker
+            data:
+              volume_level: "{{ volume_level }}"
 
-# Example 2: Virtual Media Player using Input Helpers
-# This creates a virtual media player controlled by input helpers
+# Example 2: Trigger-Based Template Player
+media_player:
+  - platform: template_media_player
+    media_players:
+      trigger_player:
+        name: "Trigger Player"
+        unique_id: trigger_player_1
+        
+        # State updates only on triggers
+        state: "{{ trigger.to_state.state if trigger else 'idle' }}"
+        
+        attributes:
+          last_triggered: "{{ now() }}"
+          trigger_entity: "{{ trigger.entity_id if trigger else 'none' }}"
+        
+        # Triggers for trigger-based updates
+        triggers:
+          - platform: state
+            entity_id: media_player.source_player
+          - platform: time_pattern
+            minutes: "/5"
+        
+        service_scripts:
+          turn_on:
+            service: media_player.turn_on
+            target:
+              entity_id: media_player.source_player
+
+# Example 3: Player with Base Entity (Fallback)
+media_player:
+  - platform: template_media_player
+    media_players:
+      base_fallback_player:
+        name: "Base Fallback Player"
+        unique_id: base_fallback_1
+        
+        # Use base_entity_id for undefined operations
+        base_entity_id: media_player.real_player
+        
+        # Override only specific attributes
+        attributes:
+          custom_title: "{{ 'Now Playing: ' ~ state_attr('media_player.real_player', 'media_title') }}"
+        
+        # Override only specific service scripts (others fall back to base)
+        service_scripts:
+          volume_set:
+            service: media_player.volume_set
+            target:
+              entity_id: media_player.real_player
+            data:
+              volume_level: "{{ [volume_level * 0.8, 0.5] | min }}"  # Max 50%
+
+# Example 4: Player with Browse and Search Entities
+media_player:
+  - platform: template_media_player
+    media_players:
+      delegated_player:
+        name: "Delegated Player"
+        unique_id: delegated_player_1
+        
+        state: "{{ states('media_player.main') }}"
+        
+        # Delegate browse to Spotify
+        browse_entity_id: media_player.spotify
+        
+        # Delegate search to YouTube Music
+        search_entity_id: media_player.youtube_music
+        
+        service_scripts:
+          turn_on:
+            service: media_player.turn_on
+            target:
+              entity_id: media_player.main
+
+# Example 5: Player with Source Scripts (schema_with_slug_keys)
+media_player:
+  - platform: template_media_player
+    media_players:
+      source_player:
+        name: "Multi-Source Player"
+        unique_id: source_player_1
+        
+        state: "{{ states('media_player.receiver') }}"
+        
+        # Each source has its own script
+        source_scripts:
+          spotify:
+            service: media_player.select_source
+            target:
+              entity_id: media_player.receiver
+            data:
+              source: "Spotify Connect"
+          
+          radio:
+            service: media_player.select_source
+            target:
+              entity_id: media_player.receiver
+            data:
+              source: "Internet Radio"
+          
+          bluetooth:
+            service: media_player.select_source
+            target:
+              entity_id: media_player.receiver
+            data:
+              source: "Bluetooth"
+        
+        service_scripts:
+          turn_on:
+            service: media_player.turn_on
+            target:
+              entity_id: media_player.receiver
+
+# Example 6: Player with Sound Mode Scripts (schema_with_slug_keys)
+media_player:
+  - platform: template_media_player
+    media_players:
+      sound_mode_player:
+        name: "Sound Mode Player"
+        unique_id: sound_mode_player_1
+        
+        state: "{{ states('media_player.av_receiver') }}"
+        
+        # Each sound mode has its own script
+        sound_mode_scripts:
+          stereo:
+            service: media_player.select_sound_mode
+            target:
+              entity_id: media_player.av_receiver
+            data:
+              sound_mode: "STEREO"
+          
+          surround:
+            service: media_player.select_sound_mode
+            target:
+              entity_id: media_player.av_receiver
+            data:
+              sound_mode: "DOLBY DIGITAL"
+          
+          music:
+            service: media_player.select_sound_mode
+            target:
+              entity_id: media_player.av_receiver
+            data:
+              sound_mode: "MUSIC"
+        
+        service_scripts:
+          turn_on:
+            service: media_player.turn_on
+            target:
+              entity_id: media_player.av_receiver
+
+# Example 7: Virtual Player with Input Helpers
 media_player:
   - platform: template_media_player
     media_players:
       virtual_player:
-        friendly_name: "Virtual Player"
+        name: "Virtual Player"
         unique_id: virtual_player_1
         
-        # State is controlled by an input_select
-        value_template: "{{ states('input_select.virtual_player_state') }}"
+        state: "{{ states('input_select.virtual_player_state') }}"
         
-        # Volume is controlled by an input_number
-        volume_level_template: "{{ states('input_number.virtual_player_volume') | float }}"
+        attributes:
+          media_title: "{{ states('input_text.virtual_player_title') }}"
+          media_artist: "{{ states('input_text.virtual_player_artist') }}"
+          volume_level: "{{ states('input_number.virtual_player_volume') | float }}"
         
-        # Media info from input_text helpers
-        media_title_template: "{{ states('input_text.virtual_player_title') }}"
-        media_artist_template: "{{ states('input_text.virtual_player_artist') }}"
-        
-        # Actions update the input helpers
-        turn_on:
-          service: input_select.select_option
-          target:
-            entity_id: input_select.virtual_player_state
-          data:
-            option: "playing"
-            
-        turn_off:
-          service: input_select.select_option
-          target:
-            entity_id: input_select.virtual_player_state
-          data:
-            option: "off"
-            
-        pause:
-          service: input_select.select_option
-          target:
-            entity_id: input_select.virtual_player_state
-          data:
-            option: "paused"
-            
-        volume_set:
-          service: input_number.set_value
-          target:
-            entity_id: input_number.virtual_player_volume
-          data:
-            value: "{{ volume_level }}"
+        service_scripts:
+          turn_on:
+            service: input_select.select_option
+            target:
+              entity_id: input_select.virtual_player_state
+            data:
+              option: "playing"
+          
+          turn_off:
+            service: input_select.select_option
+            target:
+              entity_id: input_select.virtual_player_state
+            data:
+              option: "off"
+          
+          media_pause:
+            service: input_select.select_option
+            target:
+              entity_id: input_select.virtual_player_state
+            data:
+              option: "paused"
+          
+          volume_set:
+            service: input_number.set_value
+            target:
+              entity_id: input_number.virtual_player_volume
+            data:
+              value: "{{ volume_level }}"
 
-# Example 3: Combined Multi-Room Player
-# This creates a template player that controls multiple players at once
+# Example 8: Combined Multi-Room Player
 media_player:
   - platform: template_media_player
     media_players:
       whole_house:
-        friendly_name: "Whole House Audio"
+        name: "Whole House Audio"
         unique_id: whole_house_audio_1
         
-        # Playing if any player is playing
-        value_template: >-
+        state: >-
           {% set players = ['media_player.living_room', 'media_player.bedroom', 'media_player.kitchen'] %}
           {% if players | select('is_state', 'playing') | list | count > 0 %}
             playing
@@ -111,105 +267,56 @@ media_player:
             idle
           {% endif %}
         
-        # Average volume across all players
-        volume_level_template: >-
-          {% set players = ['media_player.living_room', 'media_player.bedroom', 'media_player.kitchen'] %}
-          {% set volumes = players | map('state_attr', 'volume_level') | select('number') | list %}
-          {% if volumes | length > 0 %}
-            {{ (volumes | sum / volumes | length) | round(2) }}
-          {% else %}
-            0.5
-          {% endif %}
+        attributes:
+          volume_level: >-
+            {% set players = ['media_player.living_room', 'media_player.bedroom', 'media_player.kitchen'] %}
+            {% set volumes = players | map('state_attr', 'volume_level') | select('number') | list %}
+            {{ (volumes | sum / volumes | length) | round(2) if volumes else 0.5 }}
+          
+          media_title: >-
+            {% set players = ['media_player.living_room', 'media_player.bedroom', 'media_player.kitchen'] %}
+            {% set playing = players | select('is_state', 'playing') | list %}
+            {{ state_attr(playing[0], 'media_title') if playing else '' }}
         
-        # Show title from first playing player
-        media_title_template: >-
-          {% set players = ['media_player.living_room', 'media_player.bedroom', 'media_player.kitchen'] %}
-          {% set playing = players | select('is_state', 'playing') | list %}
-          {% if playing | length > 0 %}
-            {{ state_attr(playing[0], 'media_title') }}
-          {% endif %}
-        
-        # Turn on/off all players
-        turn_on:
-          - service: media_player.turn_on
-            target:
-              entity_id:
-                - media_player.living_room
-                - media_player.bedroom
-                - media_player.kitchen
-                
-        turn_off:
-          - service: media_player.turn_off
-            target:
-              entity_id:
-                - media_player.living_room
-                - media_player.bedroom
-                - media_player.kitchen
-        
-        # Set volume on all players
-        volume_set:
-          - service: media_player.volume_set
-            target:
-              entity_id:
-                - media_player.living_room
-                - media_player.bedroom
-                - media_player.kitchen
-            data:
-              volume_level: "{{ volume_level }}"
-        
-        # Play media on all players
-        play_media:
-          - service: media_player.play_media
-            target:
-              entity_id:
-                - media_player.living_room
-                - media_player.bedroom
-                - media_player.kitchen
-            data:
-              media_content_type: "{{ media_type }}"
-              media_content_id: "{{ media_id }}"
+        service_scripts:
+          turn_on:
+            - service: media_player.turn_on
+              target:
+                entity_id:
+                  - media_player.living_room
+                  - media_player.bedroom
+                  - media_player.kitchen
+          
+          turn_off:
+            - service: media_player.turn_off
+              target:
+                entity_id:
+                  - media_player.living_room
+                  - media_player.bedroom
+                  - media_player.kitchen
+          
+          volume_set:
+            - service: media_player.volume_set
+              target:
+                entity_id:
+                  - media_player.living_room
+                  - media_player.bedroom
+                  - media_player.kitchen
+              data:
+                volume_level: "{{ volume_level }}"
+          
+          play_media:
+            - service: media_player.play_media
+              target:
+                entity_id:
+                  - media_player.living_room
+                  - media_player.bedroom
+                  - media_player.kitchen
+              data:
+                media_content_type: "{{ media_type }}"
+                media_content_id: "{{ media_id }}"
 
-# Example 4: Advanced Template with Conditions
-# This player modifies behavior based on time of day
-media_player:
-  - platform: template_media_player
-    media_players:
-      smart_player:
-        friendly_name: "Smart Player"
-        unique_id: smart_player_1
-        
-        value_template: "{{ states('media_player.bedroom_speaker') }}"
-        
-        # Lower volume at night
-        volume_level_template: >-
-          {% set current = state_attr('media_player.bedroom_speaker', 'volume_level') | float %}
-          {% if now().hour >= 22 or now().hour < 7 %}
-            {{ [current, 0.3] | min }}
-          {% else %}
-            {{ current }}
-          {% endif %}
-        
-        media_title_template: "{{ state_attr('media_player.bedroom_speaker', 'media_title') }}"
-        
-        turn_on:
-          service: media_player.turn_on
-          target:
-            entity_id: media_player.bedroom_speaker
-        
-        # Volume set respects night time limit
-        volume_set:
-          service: media_player.volume_set
-          target:
-            entity_id: media_player.bedroom_speaker
-          data:
-            volume_level: >-
-              {% if now().hour >= 22 or now().hour < 7 %}
-                {{ [volume_level, 0.3] | min }}
-              {% else %}
-                {{ volume_level }}
-              {% endif %}
-
-# Required Input Helpers for Example 2
+# Required Input Helpers for Example 7 (Virtual Player)
 # Add these to your configuration.yaml:
 #
 # input_select:
