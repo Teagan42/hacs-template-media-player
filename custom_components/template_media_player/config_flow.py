@@ -102,4 +102,3 @@ class TemplateMediaPlayerConfigFlow(SchemaConfigFlowHandler, domain=DOMAIN):
     def async_config_entry_title(self, options: Mapping[str, Any]) -> str:
         """Return config entry title."""
         return cast(str, options.get(CONF_NAME, "Template Media Player"))
-

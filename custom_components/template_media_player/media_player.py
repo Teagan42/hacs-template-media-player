@@ -35,7 +35,6 @@ from homeassistant.const import (
     CONF_UNIQUE_ID,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.script import Script, ScriptRunResult
 from homeassistant.helpers.template import Template
@@ -91,51 +90,19 @@ from .const import (
     CONF_TRIGGERS,
     CONF_TURN_OFF_SCRIPT,
     CONF_TURN_ON_SCRIPT,
-    CONF_VARIABLES,
     CONF_VOLUME_DOWN_SCRIPT,
     CONF_VOLUME_MUTE_SCRIPT,
     CONF_VOLUME_SET_SCRIPT,
     CONF_VOLUME_UP_SCRIPT,
     DOMAIN,
+    PLATFORM_CONFIG_SCHEMA,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-MEDIA_PLAYER_SCHEMA = vol.Schema(
-    {
-        vol.Optional(CONF_NAME): cv.template,
-        vol.Optional(CONF_UNIQUE_ID): cv.string,
-        vol.Optional(CONF_ICON): cv.template,
-        vol.Optional(CONF_PICTURE): cv.template,
-        vol.Optional(CONF_DEFAULT_ENTITY_ID): cv.entity_id,
-        vol.Optional(CONF_VARIABLES): cv.SCRIPT_VARIABLES_SCHEMA,
-        vol.Optional(CONF_ATTRIBUTES, default={}): cv.schema_with_slug_keys(
-            cv.template
-        ),
-        vol.Optional(CONF_DEVICE_CLASS): cv.string,
-        vol.Optional(CONF_STATE): cv.template,
-        vol.Optional(CONF_AVAILABILITY): cv.template,
-        vol.Optional(CONF_BASE_MEDIA_PLAYER_ENTITY_ID): cv.entity_id,
-        vol.Optional(CONF_SEARCH_MEDIA_ENTITY_ID): cv.entity_id,
-        vol.Optional(CONF_BROWSE_MEDIA_ENTITY_ID): cv.entity_id,
-        vol.Optional(CONF_SERVICE_SCRIPTS, default={}): cv.schema_with_slug_keys(
-            cv.SCRIPT_SCHEMA
-        ),
-        vol.Optional(CONF_SOUND_MODE_SCRIPTS, default={}): cv.schema_with_slug_keys(
-            cv.SCRIPT_SCHEMA
-        ),
-        vol.Optional(CONF_SOURCE_SCRIPTS, default={}): cv.schema_with_slug_keys(
-            cv.SCRIPT_SCHEMA
-        ),
-        vol.Optional(CONF_TRIGGERS, default=[]): cv.TRIGGER_SCHEMA,
-    }
-)
 
-PLATFORM_SCHEMA = MEDIA_PLAYER_PLATFORM_SCHEMA.extend(
-    {
-        vol.Optional(CONF_MEDIA_PLAYERS): cv.schema_with_slug_keys(MEDIA_PLAYER_SCHEMA),
-        **MEDIA_PLAYER_SCHEMA.schema,
-    }
+PLATFORM_SCHEMA = vol.All(
+    MEDIA_PLAYER_PLATFORM_SCHEMA.extend(PLATFORM_CONFIG_SCHEMA.schema)
 )
 
 
@@ -219,7 +186,7 @@ async def async_setup_entry(
         return
 
     try:
-        config = MEDIA_PLAYER_SCHEMA(config)
+        config = PLATFORM_CONFIG_SCHEMA(config)
     except vol.Invalid as err:
         _LOGGER.error("Invalid config entry data: %s", err)
         return
