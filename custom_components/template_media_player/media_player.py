@@ -223,7 +223,11 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
                 continue
             config[CONF_VARIABLES] = {
                 var: Template(val, hass),
-                **config[CONF_VARIABLES],
+                **(
+                    config[CONF_VARIABLES]
+                    if isinstance(config[CONF_VARIABLES], dict)
+                    else config[CONF_VARIABLES].as_dict()
+                ),
             }
 
         base_entity = None
