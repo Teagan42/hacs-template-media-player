@@ -65,7 +65,6 @@ except ImportError:  # HA 2026.1+
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from .const import (
-    CONF_ATTRIBUTES,
     CONF_AVAILABILITY,
     CONF_BASE_MEDIA_PLAYER_ENTITY_ID,
     CONF_BROWSE_MEDIA_ENTITY_ID,
