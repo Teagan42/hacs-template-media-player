@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from functools import cached_property
 from inspect import iscoroutinefunction
 import logging
 from typing import Any, Mapping, Optional, cast
@@ -152,6 +151,15 @@ def _get_template(
     return Template(f"{{{{ states('{base_entity_id}') }}}}", hass)
 
 
+def _get_available_template(
+    hass,
+    base_entity_id: str | None,
+) -> Template:
+    if base_entity_id is None:
+        return Template("{{ True }}", hass)
+    return Template(f"{{{{ has_value('{base_entity_id}') }}}}", hass)
+
+
 async def async_setup_platform(
     hass: HomeAssistant,
     config: ConfigType,
@@ -220,9 +228,8 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
         self._state_template: Template | None = config.get(
             CONF_STATE, _get_template(hass, self._base_entity_id)
         )
-        print(self._state_template)
         self._availability_template: Template | None = config.get(
-            CONF_AVAILABILITY, _get_template(hass, self._base_entity_id, "available")
+            CONF_AVAILABILITY, _get_available_template(hass, self._base_entity_id)
         )
         self._icon_template: Template | None = config.get(
             CONF_ICON, _get_template(hass, self._base_entity_id, "icon")
@@ -338,8 +345,8 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
     # PROPERTIES
     # =================================================
 
-    @cached_property
-    def supported_features(self) -> MediaPlayerEntityFeature:
+    @property
+    def supported_features(self) -> MediaPlayerEntityFeature:  # type: ignore
         """Flag media player features that are supported."""
         # Start with base entity features if available
         base = self._get_base_entity()
@@ -386,8 +393,8 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
 
         return features
 
-    @cached_property
-    def source_list(self) -> list[str] | None:
+    @property
+    def source_list(self) -> list[str] | None:  # type: ignore
         """Return the list of available input sources."""
         if self._source_scripts:
             return list(self._source_scripts.keys())
@@ -395,8 +402,8 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
             return base.source_list
         return None
 
-    @cached_property
-    def sound_mode_list(self) -> list[str] | None:
+    @property
+    def sound_mode_list(self) -> list[str] | None:  # type: ignore
         """Return the list of available sound modes."""
         if self._sound_mode_scripts:
             return list(self._sound_mode_scripts.keys())
@@ -404,8 +411,8 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
             return base.sound_mode_list
         return None
 
-    @cached_property
-    def extra_state_attributes(self) -> Mapping[str, Any] | None:
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any] | None:  # type: ignore
         """Return the extra state attributes."""
         base_entity = self._get_base_entity()
         if base_entity and base_entity.extra_state_attributes is not None:
