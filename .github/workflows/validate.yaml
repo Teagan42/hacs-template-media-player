@@ -41,14 +41,20 @@ jobs:
         run: |
           uv run pytest \
             --junitxml=pytest.xml \
-            --cov=hacs-intentsity \
+            --cov=custom_components.template_media_player \
             --cov-report=term-missing:skip-covered \
             --cov-report=xml:coverage.xml \
             | tee pytest-coverage.txt
       - name: Coverage comment
+        id: coverage
         uses: MishaKav/pytest-coverage-comment@main
         with:
           pytest-coverage-path: pytest-coverage.txt
           junitxml-path: pytest.xml
           hide-comment: false
           github-token: ${{ secrets.GH_TOKEN }}
+      - name: Fail if coverage too low
+        if: ${{ steps.coverage.outputs.coverage < 80 }}
+        run: |
+          echo "Coverage is below 80%!"
+          exit 1

@@ -12,15 +12,18 @@ from homeassistant.components.media_player import (
     MediaPlayerState,
 )
 from homeassistant.components.media_player import DOMAIN as MEDIA_PLAYER_DOMAIN
+from homeassistant.components.media_player.browse_media import BrowseMedia
 from homeassistant.const import CONF_UNIQUE_ID
 from homeassistant.core import State
 from homeassistant.helpers.entity_platform import EntityPlatform
+from homeassistant.helpers.script import ScriptRunResult
 from homeassistant.helpers.template import Template
 from homeassistant.util import slugify
 
 from custom_components.template_media_player.const import (
     DOMAIN,
     CONF_BASE_MEDIA_PLAYER_ENTITY_ID,
+    CONF_BROWSE_MEDIA_ENTITY_ID,
     CONF_BROWSE_MEDIA_SCRIPT,
     CONF_DEFAULT_ENTITY_ID,
     CONF_MEDIA_PLAY_SCRIPT,
@@ -211,6 +214,107 @@ async def test_extra_state_attributes_returns_values(hass) -> None:
     await hass.async_block_till_done()
 
     assert entity.extra_state_attributes == {"title": "Song"}
+
+
+@pytest.mark.asyncio
+async def test_run_script_uses_script(hass) -> None:
+    script = SimpleNamespace(async_run=AsyncMock())
+
+    entity = TemplateMediaPlayer(hass, {}, "player")
+    entity._service_scripts = {CONF_MEDIA_PLAY_SCRIPT: script}
+
+    await entity._run_script(CONF_MEDIA_PLAY_SCRIPT)
+
+    script.async_run.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_async_play_media_prefers_browse_entity(hass) -> None:
+    browse = SimpleNamespace(async_play_media=AsyncMock())
+    base = SimpleNamespace(async_play_media=AsyncMock())
+    entities = {
+        "media_player.browse": browse,
+        "media_player.base": base,
+    }
+    hass.data[MEDIA_PLAYER_DOMAIN] = SimpleNamespace(
+        get_entity=lambda entity_id: entities.get(entity_id)
+    )
+
+    entity = TemplateMediaPlayer(
+        hass,
+        {
+            CONF_BROWSE_MEDIA_ENTITY_ID: "media_player.browse",
+            CONF_BASE_MEDIA_PLAYER_ENTITY_ID: "media_player.base",
+        },
+        "player",
+    )
+
+    await entity.async_play_media("music", "track")
+
+    browse.async_play_media.assert_awaited_once()
+    base.async_play_media.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_async_play_media_falls_back_to_base(hass) -> None:
+    base = SimpleNamespace(async_play_media=AsyncMock())
+    hass.data[MEDIA_PLAYER_DOMAIN] = SimpleNamespace(get_entity=lambda entity_id: base)
+
+    entity = TemplateMediaPlayer(
+        hass,
+        {CONF_BASE_MEDIA_PLAYER_ENTITY_ID: "media_player.base"},
+        "player",
+    )
+
+    await entity.async_play_media("music", "track")
+
+    base.async_play_media.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_async_play_media_uses_script(hass) -> None:
+    script = SimpleNamespace(async_run=AsyncMock())
+    entity = TemplateMediaPlayer(hass, {}, "player")
+    entity._service_scripts = {CONF_PLAY_MEDIA_SCRIPT: script}
+
+    await entity.async_play_media("music", "track")
+
+    script.async_run.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_async_browse_media_uses_script_result(hass) -> None:
+    script_result = ScriptRunResult(
+        conversation_response=None,
+        service_response={
+            "media_class": "music",
+            "media_content_id": "root",
+            "media_content_type": "library",
+            "title": "Library",
+            "can_play": False,
+            "can_expand": True,
+        },
+        variables={},
+    )
+    script = SimpleNamespace(async_run=AsyncMock(return_value=script_result))
+
+    entity = TemplateMediaPlayer(hass, {}, "player")
+    entity._service_scripts = {CONF_BROWSE_MEDIA_SCRIPT: script}
+
+    result = await entity.async_browse_media("library", "root")
+
+    assert isinstance(result, BrowseMedia)
+    assert result.title == "Library"
+
+
+@pytest.mark.asyncio
+async def test_async_browse_media_default_response(hass) -> None:
+    entity = TemplateMediaPlayer(hass, {}, "player")
+
+    result = await entity.async_browse_media()
+
+    assert isinstance(result, BrowseMedia)
+    assert result.can_play is False
 
 
 @pytest.mark.asyncio
