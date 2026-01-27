@@ -258,9 +258,7 @@ async def test_async_play_media_prefers_browse_entity(hass) -> None:
 @pytest.mark.asyncio
 async def test_async_play_media_falls_back_to_base(hass) -> None:
     base = SimpleNamespace(async_play_media=AsyncMock())
-    hass.data[MEDIA_PLAYER_DOMAIN] = SimpleNamespace(
-        get_entity=lambda entity_id: base
-    )
+    hass.data[MEDIA_PLAYER_DOMAIN] = SimpleNamespace(get_entity=lambda entity_id: base)
 
     entity = TemplateMediaPlayer(
         hass,

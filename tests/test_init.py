@@ -37,7 +37,9 @@ async def test_reload_service_calls_process(hass, monkeypatch) -> None:
         "async_process_component_and_handle_errors",
         AsyncMock(return_value=config),
     )
-    monkeypatch.setattr(integration, "async_get_integration", AsyncMock(return_value=object()))
+    monkeypatch.setattr(
+        integration, "async_get_integration", AsyncMock(return_value=object())
+    )
     monkeypatch.setattr(
         integration,
         "async_reload_integration_platforms",

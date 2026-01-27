@@ -409,7 +409,9 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
         if base_entity:
             base_attrs = getattr(base_entity, "state_attributes", {}) or {}
         attrs = {**base_attrs}
-        for key, value in (getattr(self, "_attr_extra_state_attributes", {}) or {}).items():
+        for key, value in (
+            getattr(self, "_attr_extra_state_attributes", {}) or {}
+        ).items():
             if value is not None:
                 attrs[key] = value
         return attrs
