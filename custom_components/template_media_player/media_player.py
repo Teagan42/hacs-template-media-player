@@ -35,7 +35,6 @@ from homeassistant.const import (
     CONF_UNIQUE_ID,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.script import Script, ScriptRunResult
 from homeassistant.helpers.template import Template
@@ -91,51 +90,19 @@ from .const import (
     CONF_TRIGGERS,
     CONF_TURN_OFF_SCRIPT,
     CONF_TURN_ON_SCRIPT,
-    CONF_VARIABLES,
     CONF_VOLUME_DOWN_SCRIPT,
     CONF_VOLUME_MUTE_SCRIPT,
     CONF_VOLUME_SET_SCRIPT,
     CONF_VOLUME_UP_SCRIPT,
     DOMAIN,
+    PLATFORM_CONFIG_SCHEMA,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-MEDIA_PLAYER_SCHEMA = vol.Schema(
-    {
-        vol.Optional(CONF_NAME): cv.template,
-        vol.Optional(CONF_UNIQUE_ID): cv.string,
-        vol.Optional(CONF_ICON): cv.template,
-        vol.Optional(CONF_PICTURE): cv.template,
-        vol.Optional(CONF_DEFAULT_ENTITY_ID): cv.entity_id,
-        vol.Optional(CONF_VARIABLES): cv.SCRIPT_VARIABLES_SCHEMA,
-        vol.Optional(CONF_ATTRIBUTES, default={}): cv.schema_with_slug_keys(
-            cv.template
-        ),
-        vol.Optional(CONF_DEVICE_CLASS): cv.string,
-        vol.Optional(CONF_STATE): cv.template,
-        vol.Optional(CONF_AVAILABILITY): cv.template,
-        vol.Optional(CONF_BASE_MEDIA_PLAYER_ENTITY_ID): cv.entity_id,
-        vol.Optional(CONF_SEARCH_MEDIA_ENTITY_ID): cv.entity_id,
-        vol.Optional(CONF_BROWSE_MEDIA_ENTITY_ID): cv.entity_id,
-        vol.Optional(CONF_SERVICE_SCRIPTS, default={}): cv.schema_with_slug_keys(
-            cv.SCRIPT_SCHEMA
-        ),
-        vol.Optional(CONF_SOUND_MODE_SCRIPTS, default={}): cv.schema_with_slug_keys(
-            cv.SCRIPT_SCHEMA
-        ),
-        vol.Optional(CONF_SOURCE_SCRIPTS, default={}): cv.schema_with_slug_keys(
-            cv.SCRIPT_SCHEMA
-        ),
-        vol.Optional(CONF_TRIGGERS, default=[]): cv.TRIGGER_SCHEMA,
-    }
-)
 
-PLATFORM_SCHEMA = MEDIA_PLAYER_PLATFORM_SCHEMA.extend(
-    {
-        vol.Optional(CONF_MEDIA_PLAYERS): cv.schema_with_slug_keys(MEDIA_PLAYER_SCHEMA),
-        **MEDIA_PLAYER_SCHEMA.schema,
-    }
+PLATFORM_SCHEMA = vol.All(
+    MEDIA_PLAYER_PLATFORM_SCHEMA.extend(PLATFORM_CONFIG_SCHEMA.schema)
 )
 
 
@@ -160,6 +127,16 @@ def _get_available_template(
     return Template(f"{{{{ has_value('{base_entity_id}') }}}}", hass)
 
 
+def _derive_object_id(config: dict[str, Any]) -> str:
+    if default_entity_id := config.get(CONF_DEFAULT_ENTITY_ID):
+        return default_entity_id.partition(".")[2]
+    if object_id_source := config.get(CONF_UNIQUE_ID):
+        return slugify(object_id_source)
+    if name_template := config.get(CONF_NAME):
+        return slugify(getattr(name_template, "template", str(name_template)))
+    return "template_media_player"
+
+
 async def async_setup_platform(
     hass: HomeAssistant,
     config: ConfigType,
@@ -178,14 +155,7 @@ async def async_setup_platform(
     if not media_players_config:
         single_config = dict(config)
         single_config.pop("platform", None)
-        if default_entity_id := single_config.get(CONF_DEFAULT_ENTITY_ID):
-            object_id = default_entity_id.partition(".")[2]
-        elif object_id_source := single_config.get(CONF_UNIQUE_ID):
-            object_id = slugify(object_id_source)
-        elif name_template := single_config.get(CONF_NAME):
-            object_id = slugify(getattr(name_template, "template", str(name_template)))
-        else:
-            object_id = "template_media_player"
+        object_id = _derive_object_id(single_config)
         media_players_config = {object_id: single_config}
         _LOGGER.debug(
             "Setting up template media player from flat config: %s", object_id
@@ -202,6 +172,27 @@ async def async_setup_platform(
     ]
 
     async_add_entities(entities)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up template media player from a config entry."""
+    config = dict(entry.options or entry.data)
+    if not config:
+        _LOGGER.error("Config entry is missing data/options")
+        return
+
+    try:
+        config = PLATFORM_CONFIG_SCHEMA(config)
+    except vol.Invalid as err:
+        _LOGGER.error("Invalid config entry data: %s", err)
+        return
+
+    object_id = _derive_object_id(config)
+    async_add_entities([TemplateMediaPlayer(hass, config, object_id)])
 
 
 class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):

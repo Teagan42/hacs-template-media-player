@@ -17,15 +17,9 @@ A HACS installable custom Home Assistant component that provides template-based 
 
 ### HACS (Recommended)
 
-1. Open HACS in your Home Assistant instance
-2. Go to "Integrations"
-3. Click the three dots in the top right corner
-4. Select "Custom repositories"
-5. Add this repository URL: `https://github.com/Teagan42/hacs-template-media-player`
-6. Select "Integration" as the category
-7. Click "Add"
-8. Find "Template Media Player" in the integration list and install it
-9. Restart Home Assistant
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=teagan42&repository=hacs-template-media-player&category=integration)
+
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=template_media_player)
 
 ### Manual Installation
 
