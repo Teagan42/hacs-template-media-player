@@ -1,18 +1,12 @@
 """Constants for Template Media Player."""
 
-from homeassistant.const import (
-    CONF_DEVICE_CLASS,
-    CONF_ICON,
-    CONF_NAME,
-    CONF_UNIQUE_ID,
-)
-
 DOMAIN = "template_media_player"
 
 # Configuration
 CONF_MEDIA_PLAYERS = "media_players"
 CONF_ATTRIBUTES = "attributes"
 CONF_AVAILABILITY = "availability"
+CONF_DEFAULT_ENTITY_ID = "default_entity_id"
 CONF_PICTURE = "picture"
 CONF_STATE = "state"
 CONF_VARIABLES = "variables"

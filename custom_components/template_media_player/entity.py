@@ -1,4 +1,5 @@
 """Template entity for Template Media Player."""
+
 from __future__ import annotations
 
 # Import the native TemplateEntity from Home Assistant core

@@ -40,96 +40,95 @@ Add the following to your `configuration.yaml`:
 ```yaml
 media_player:
   - platform: template_media_player
-    media_players:
-      example_player:
-        name: "{{ 'Example Player' }}"  # Optional: template for name
-        unique_id: example_media_player_1
-        icon: "{{ 'mdi:speaker' }}"  # Optional: template for icon
-        picture: "{{ state_attr('media_player.real_player', 'entity_picture') }}"  # Optional
-        
-        # State template - determines the current state
-        state: "{{ states('media_player.real_player') }}"
-        
-        # Availability template
-        availability: "{{ states('media_player.real_player') != 'unavailable' }}"
-        
-        # Custom attributes (using schema_with_slug_keys)
-        attributes:
-          media_title: "{{ state_attr('media_player.real_player', 'media_title') }}"
-          media_artist: "{{ state_attr('media_player.real_player', 'media_artist') }}"
-          media_album: "{{ state_attr('media_player.real_player', 'media_album_name') }}"
-          volume_level: "{{ state_attr('media_player.real_player', 'volume_level') }}"
-          is_volume_muted: "{{ state_attr('media_player.real_player', 'is_volume_muted') }}"
-          source: "{{ state_attr('media_player.real_player', 'source') }}"
-        
-        # Service scripts (using schema_with_slug_keys)
-        service_scripts:
-          turn_on:
-            service: media_player.turn_on
-            target:
-              entity_id: media_player.real_player
-          
-          turn_off:
-            service: media_player.turn_off
-            target:
-              entity_id: media_player.real_player
-          
-          media_play:
-            service: media_player.media_play
-            target:
-              entity_id: media_player.real_player
-          
-          media_pause:
-            service: media_player.media_pause
-            target:
-              entity_id: media_player.real_player
-          
-          volume_set:
-            service: media_player.volume_set
-            target:
-              entity_id: media_player.real_player
-            data:
-              volume_level: "{{ volume_level }}"
-          
-          play_media:
-            service: media_player.play_media
-            target:
-              entity_id: media_player.real_player
-            data:
-              media_content_type: "{{ media_type }}"
-              media_content_id: "{{ media_id }}"
-        
-        # Optional: Source scripts (each source has its own script)
-        source_scripts:
-          spotify:
-            service: media_player.select_source
-            target:
-              entity_id: media_player.real_player
-            data:
-              source: "Spotify"
-          
-          radio:
-            service: media_player.select_source
-            target:
-              entity_id: media_player.real_player
-            data:
-              source: "Radio"
-        
-        # Optional: Sound mode scripts (each sound mode has its own script)
-        sound_mode_scripts:
-          stereo:
-            service: media_player.select_sound_mode
-            target:
-              entity_id: media_player.real_player
-            data:
-              sound_mode: "stereo"
-          
-          surround:
-            service: media_player.select_sound_mode
-            target:
-              entity_id: media_player.real_player
-            data:
-              sound_mode: "surround"
+    name: "{{ 'Example Player' }}"  # Optional: template for name
+    unique_id: example_media_player_1
+    default_entity_id: media_player.example_player
+    icon: "{{ 'mdi:speaker' }}"  # Optional: template for icon
+    picture: "{{ state_attr('media_player.real_player', 'entity_picture') }}"  # Optional
+
+    # State template - determines the current state
+    state: "{{ states('media_player.real_player') }}"
+
+    # Availability template
+    availability: "{{ states('media_player.real_player') != 'unavailable' }}"
+
+    # Custom attributes (using schema_with_slug_keys)
+    attributes:
+      media_title: "{{ state_attr('media_player.real_player', 'media_title') }}"
+      media_artist: "{{ state_attr('media_player.real_player', 'media_artist') }}"
+      media_album: "{{ state_attr('media_player.real_player', 'media_album_name') }}"
+      volume_level: "{{ state_attr('media_player.real_player', 'volume_level') }}"
+      is_volume_muted: "{{ state_attr('media_player.real_player', 'is_volume_muted') }}"
+      source: "{{ state_attr('media_player.real_player', 'source') }}"
+
+    # Service scripts (using schema_with_slug_keys)
+    service_scripts:
+      turn_on:
+        service: media_player.turn_on
+        target:
+          entity_id: media_player.real_player
+
+      turn_off:
+        service: media_player.turn_off
+        target:
+          entity_id: media_player.real_player
+
+      media_play:
+        service: media_player.media_play
+        target:
+          entity_id: media_player.real_player
+
+      media_pause:
+        service: media_player.media_pause
+        target:
+          entity_id: media_player.real_player
+
+      volume_set:
+        service: media_player.volume_set
+        target:
+          entity_id: media_player.real_player
+        data:
+          volume_level: "{{ volume_level }}"
+
+      play_media:
+        service: media_player.play_media
+        target:
+          entity_id: media_player.real_player
+        data:
+          media_content_type: "{{ media_type }}"
+          media_content_id: "{{ media_id }}"
+
+    # Optional: Source scripts (each source has its own script)
+    source_scripts:
+      spotify:
+        service: media_player.select_source
+        target:
+          entity_id: media_player.real_player
+        data:
+          source: "Spotify"
+
+      radio:
+        service: media_player.select_source
+        target:
+          entity_id: media_player.real_player
+        data:
+          source: "Radio"
+
+    # Optional: Sound mode scripts (each sound mode has its own script)
+    sound_mode_scripts:
+      stereo:
+        service: media_player.select_sound_mode
+        target:
+          entity_id: media_player.real_player
+        data:
+          sound_mode: "stereo"
+
+      surround:
+        service: media_player.select_sound_mode
+        target:
+          entity_id: media_player.real_player
+        data:
+          sound_mode: "surround"
 ```
 
 ## Advanced Configuration
@@ -139,24 +138,22 @@ media_player:
 ```yaml
 media_player:
   - platform: template_media_player
-    media_players:
-      triggered_player:
-        name: "Triggered Player"
-        state: "{{ trigger.to_state.state }}"
-        
-        attributes:
-          last_updated: "{{ now() }}"
-        
-        # Triggers that cause the entity to update
-        triggers:
-          - platform: state
-            entity_id: media_player.source_player
-        
-        service_scripts:
-          turn_on:
-            service: media_player.turn_on
-            target:
-              entity_id: media_player.source_player
+    name: "Triggered Player"
+    state: "{{ trigger.to_state.state }}"
+
+    attributes:
+      last_updated: "{{ now() }}"
+
+    # Triggers that cause the entity to update
+    triggers:
+      - platform: state
+        entity_id: media_player.source_player
+
+    service_scripts:
+      turn_on:
+        service: media_player.turn_on
+        target:
+          entity_id: media_player.source_player
 ```
 
 ### Using Base Entity (Fallback)
@@ -164,26 +161,24 @@ media_player:
 ```yaml
 media_player:
   - platform: template_media_player
-    media_players:
-      enhanced_player:
-        name: "Enhanced Player"
-        
-        # Use another media player as base for undefined operations
-        base_entity_id: media_player.real_player
-        
-        # Override specific attributes with templates
-        attributes:
-          custom_info: "{{ 'Custom: ' ~ state_attr('media_player.real_player', 'media_title') }}"
-        
-        # Override specific operations with scripts
-        service_scripts:
-          volume_set:
-            # Custom volume scaling
-            service: media_player.volume_set
-            target:
-              entity_id: media_player.real_player
-            data:
-              volume_level: "{{ volume_level * 0.8 }}"  # Max volume at 80%
+    name: "Enhanced Player"
+
+    # Use another media player as base for undefined operations
+    base_entity_id: media_player.real_player
+
+    # Override specific attributes with templates
+    attributes:
+      custom_info: "{{ 'Custom: ' ~ state_attr('media_player.real_player', 'media_title') }}"
+
+    # Override specific operations with scripts
+    service_scripts:
+      volume_set:
+        # Custom volume scaling
+        service: media_player.volume_set
+        target:
+          entity_id: media_player.real_player
+        data:
+          volume_level: "{{ volume_level * 0.8 }}"  # Max volume at 80%
 ```
 
 ### Using Browse and Search Entities
@@ -191,22 +186,20 @@ media_player:
 ```yaml
 media_player:
   - platform: template_media_player
-    media_players:
-      delegated_player:
-        name: "Delegated Player"
-        state: "{{ states('media_player.main_player') }}"
-        
-        # Delegate browse functionality to another player
-        browse_entity_id: media_player.spotify
-        
-        # Delegate search functionality to another player
-        search_entity_id: media_player.youtube_music
-        
-        service_scripts:
-          turn_on:
-            service: media_player.turn_on
-            target:
-              entity_id: media_player.main_player
+    name: "Delegated Player"
+    state: "{{ states('media_player.main_player') }}"
+
+    # Delegate browse functionality to another player
+    browse_entity_id: media_player.spotify
+
+    # Delegate search functionality to another player
+    search_entity_id: media_player.youtube_music
+
+    service_scripts:
+      turn_on:
+        service: media_player.turn_on
+        target:
+          entity_id: media_player.main_player
 ```
 
 ## Configuration Options
@@ -217,6 +210,7 @@ media_player:
 |--------|------|----------|-------------|
 | `name` | template | No | Template for the entity name |
 | `unique_id` | string | No | Unique ID for the entity |
+| `default_entity_id` | entity_id | No | Default entity_id to use (object_id source) |
 | `icon` | template | No | Template for the entity icon |
 | `picture` | template | No | Template for the entity picture |
 | `state` | template | No | Template for the entity state |
@@ -263,29 +257,27 @@ Create a virtual media player controlled by input entities:
 ```yaml
 media_player:
   - platform: template_media_player
-    media_players:
-      virtual_player:
-        name: "Virtual Player"
-        state: "{{ states('input_select.player_state') }}"
-        
-        attributes:
-          media_title: "{{ states('input_text.current_track') }}"
-          volume_level: "{{ states('input_number.player_volume') | float }}"
-        
-        service_scripts:
-          turn_on:
-            service: input_select.select_option
-            target:
-              entity_id: input_select.player_state
-            data:
-              option: "playing"
-          
-          volume_set:
-            service: input_number.set_value
-            target:
-              entity_id: input_number.player_volume
-            data:
-              value: "{{ volume_level }}"
+    name: "Virtual Player"
+    state: "{{ states('input_select.player_state') }}"
+
+    attributes:
+      media_title: "{{ states('input_text.current_track') }}"
+      volume_level: "{{ states('input_number.player_volume') | float }}"
+
+    service_scripts:
+      turn_on:
+        service: input_select.select_option
+        target:
+          entity_id: input_select.player_state
+        data:
+          option: "playing"
+
+      volume_set:
+        service: input_number.set_value
+        target:
+          entity_id: input_number.player_volume
+        data:
+          value: "{{ volume_level }}"
 ```
 
 ### Combined Multi-Room Player
@@ -293,42 +285,40 @@ media_player:
 ```yaml
 media_player:
   - platform: template_media_player
-    media_players:
-      whole_house:
-        name: "Whole House Audio"
-        
-        state: >-
-          {% set players = ['media_player.living_room', 'media_player.bedroom'] %}
-          {% if players | select('is_state', 'playing') | list | count > 0 %}
-            playing
-          {% elif players | select('is_state', 'paused') | list | count > 0 %}
-            paused
-          {% else %}
-            idle
-          {% endif %}
-        
-        attributes:
-          volume_level: >-
-            {% set players = ['media_player.living_room', 'media_player.bedroom'] %}
-            {% set volumes = players | map('state_attr', 'volume_level') | select('number') | list %}
-            {{ (volumes | sum / volumes | length) | round(2) if volumes else 0.5 }}
-        
-        service_scripts:
-          turn_on:
-            - service: media_player.turn_on
-              target:
-                entity_id:
-                  - media_player.living_room
-                  - media_player.bedroom
-          
-          volume_set:
-            - service: media_player.volume_set
-              target:
-                entity_id:
-                  - media_player.living_room
-                  - media_player.bedroom
-              data:
-                volume_level: "{{ volume_level }}"
+    name: "Whole House Audio"
+
+    state: >-
+      {% set players = ['media_player.living_room', 'media_player.bedroom'] %}
+      {% if players | select('is_state', 'playing') | list | count > 0 %}
+        playing
+      {% elif players | select('is_state', 'paused') | list | count > 0 %}
+        paused
+      {% else %}
+        idle
+      {% endif %}
+
+    attributes:
+      volume_level: >-
+        {% set players = ['media_player.living_room', 'media_player.bedroom'] %}
+        {% set volumes = players | map('state_attr', 'volume_level') | select('number') | list %}
+        {{ (volumes | sum / volumes | length) | round(2) if volumes else 0.5 }}
+
+    service_scripts:
+      turn_on:
+        - service: media_player.turn_on
+          target:
+            entity_id:
+              - media_player.living_room
+              - media_player.bedroom
+
+      volume_set:
+        - service: media_player.volume_set
+          target:
+            entity_id:
+              - media_player.living_room
+              - media_player.bedroom
+          data:
+            volume_level: "{{ volume_level }}"
 ```
 
 ## Template Variables in Scripts
