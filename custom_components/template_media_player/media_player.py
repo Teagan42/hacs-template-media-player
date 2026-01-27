@@ -281,6 +281,13 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
         if self._name_template:
             self.add_template_attribute("_attr_name", self._name_template)
 
+        for attr, tmpl in (self._attribute_templates or {}).items():
+            self.add_template_attribute(
+                f"_attr_{attr}",
+                tmpl,
+                none_on_template_error=True,
+            )
+
         # Set up triggers for trigger-based updates (like native template entities)
         if self._trigger_configs:
             for trigger_conf in self._trigger_configs:
@@ -404,11 +411,11 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
     def extra_state_attributes(self) -> Mapping[str, Any] | None:  # type: ignore
         """Return the extra state attributes."""
         base_entity = self._get_base_entity()
-        if base_entity and base_entity.extra_state_attributes is not None:
-            attrs = {**base_entity.extra_state_attributes}
+        if base_entity and base_entity.state_attributes is not None:
+            attrs = {**base_entity.state_attributes}
         else:
             attrs = {}
-        for attr in super().extra_state_attributes or {}:
+        for attr in self._attribute_templates or {}:
             value = getattr(self, f"_attr_{attr}", None)
             if value is not None:
                 attrs[attr] = value
