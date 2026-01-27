@@ -49,6 +49,7 @@ from .const import (
     CONF_MEDIA_POSITION_UPDATED_AT_TEMPLATE,
     CONF_MEDIA_TITLE_TEMPLATE,
     CONF_PAUSE_ACTION,
+    CONF_PLAY_ACTION,
     CONF_PLAY_MEDIA_ACTION,
     CONF_REPEAT_TEMPLATE,
     CONF_SHUFFLE_TEMPLATE,
@@ -109,6 +110,7 @@ MEDIA_PLAYER_SCHEMA = vol.Schema(
         vol.Optional(CONF_TURN_ON_ACTION): cv.SCRIPT_SCHEMA,
         vol.Optional(CONF_TURN_OFF_ACTION): cv.SCRIPT_SCHEMA,
         vol.Optional(CONF_PLAY_MEDIA_ACTION): cv.SCRIPT_SCHEMA,
+        vol.Optional(CONF_PLAY_ACTION): cv.SCRIPT_SCHEMA,
         vol.Optional(CONF_PAUSE_ACTION): cv.SCRIPT_SCHEMA,
         vol.Optional(CONF_STOP_ACTION): cv.SCRIPT_SCHEMA,
         vol.Optional(CONF_VOLUME_UP_ACTION): cv.SCRIPT_SCHEMA,
@@ -179,6 +181,7 @@ async def async_setup_platform(
             "turn_on": device_config.get(CONF_TURN_ON_ACTION),
             "turn_off": device_config.get(CONF_TURN_OFF_ACTION),
             "play_media": device_config.get(CONF_PLAY_MEDIA_ACTION),
+            "play": device_config.get(CONF_PLAY_ACTION),
             "pause": device_config.get(CONF_PAUSE_ACTION),
             "stop": device_config.get(CONF_STOP_ACTION),
             "volume_up": device_config.get(CONF_VOLUME_UP_ACTION),
@@ -296,13 +299,13 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
             features |= MediaPlayerEntityFeature.TURN_OFF
         if self._scripts.get("play_media"):
             features |= MediaPlayerEntityFeature.PLAY_MEDIA
+        if self._scripts.get("play"):
+            features |= MediaPlayerEntityFeature.PLAY
         if self._scripts.get("pause"):
             features |= MediaPlayerEntityFeature.PAUSE
         if self._scripts.get("stop"):
             features |= MediaPlayerEntityFeature.STOP
-        if self._scripts.get("volume_up"):
-            features |= MediaPlayerEntityFeature.VOLUME_STEP
-        if self._scripts.get("volume_down"):
+        if self._scripts.get("volume_up") or self._scripts.get("volume_down"):
             features |= MediaPlayerEntityFeature.VOLUME_STEP
         if self._scripts.get("volume_set"):
             features |= MediaPlayerEntityFeature.VOLUME_SET
@@ -506,8 +509,10 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
 
     async def async_media_play(self) -> None:
         """Play the media player."""
-        # Use turn_on for play
-        if script := self._scripts.get("turn_on"):
+        # Use dedicated play action if available, otherwise fall back to turn_on
+        if script := self._scripts.get("play"):
+            await script.async_run(context=self._context)
+        elif script := self._scripts.get("turn_on"):
             await script.async_run(context=self._context)
 
     async def async_media_stop(self) -> None:
