@@ -232,8 +232,6 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
             CONF_NAME, _get_template(hass, self._base_entity_id, "name")
         )
 
-        self._attribute_templates: dict[str, Template] = config.get(CONF_ATTRIBUTES, {})
-
         # Service scripts with slug keys
         self._service_scripts: dict[str, Script] = {
             svc: Script(hass, script, object_id, DOMAIN)
@@ -283,14 +281,6 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
         # Register name template
         if self._name_template:
             self.add_template_attribute("_attr_name", self._name_template)
-
-        # Register custom attribute templates
-        for attr, tmpl in self._attribute_templates.items():
-            self.add_template_attribute(
-                f"_attr_{attr}",
-                tmpl,
-                none_on_template_error=True,
-            )
 
         # Set up triggers for trigger-based updates (like native template entities)
         if self._trigger_configs:
@@ -382,6 +372,15 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
         if self._browse_entity_id or CONF_BROWSE_MEDIA_SCRIPT in self._service_scripts:
             features |= MediaPlayerEntityFeature.BROWSE_MEDIA
 
+        for var in [
+            self._base_entity_id,
+            self._search_entity_id,
+            self._browse_entity_id,
+        ]:
+            if var is None:
+                continue
+            self._run_variables
+
         return features
 
     @property
@@ -410,7 +409,7 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
             attrs = {**base_entity.extra_state_attributes}
         else:
             attrs = {}
-        for attr in self._attribute_templates:
+        for attr in super().extra_state_attributes or {}:
             value = getattr(self, f"_attr_{attr}", None)
             if value is not None:
                 attrs[attr] = value
@@ -419,12 +418,6 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
     # =================================================
     # COMMAND METHODS
     # =================================================
-
-    def _render_script_variables(self) -> dict[str, Any]:
-        """Render template variables for scripts."""
-        # This would render CONF_VARIABLES if needed
-        # For now, return empty dict
-        return {}
 
     async def _run_script(
         self, script_key: str, variables: dict[str, Any] | None = None
