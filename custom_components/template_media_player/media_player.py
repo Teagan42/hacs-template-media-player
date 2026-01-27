@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from inspect import iscoroutinefunction
 import logging
-from typing import Any
+from typing import Any, Mapping, Optional, cast
 
 import voluptuous as vol
 
 from homeassistant.components.media_player import (
-    DOMAIN as MEDIA_PLAYER_DOMAIN,
+    ENTITY_ID_FORMAT,
     PLATFORM_SCHEMA as MEDIA_PLAYER_PLATFORM_SCHEMA,
-    BrowseMedia,
     MediaPlayerEntity,
+)
+from homeassistant.components.media_player.const import (
+    DOMAIN as MEDIA_PLAYER_DOMAIN,
     MediaPlayerEntityFeature,
     MediaPlayerState,
     MediaType,
+)
+from homeassistant.components.media_player.browse_media import (
+    BrowseMedia,
     async_process_play_media_url,
 )
 from homeassistant.components.media_source import (
@@ -29,13 +34,35 @@ from homeassistant.const import (
     CONF_NAME,
     CONF_UNIQUE_ID,
 )
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import TemplateError
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.script import Script
+from homeassistant.helpers.script import Script, ScriptRunResult
 from homeassistant.helpers.template import Template
-from homeassistant.helpers.trigger import async_attach_trigger
+from homeassistant.util import slugify
+
+try:
+    from homeassistant.helpers.trigger import async_attach_trigger  # type: ignore
+except ImportError:  # HA 2026.1+
+    from homeassistant.helpers.trigger import async_initialize_triggers
+
+    async def async_attach_trigger(  # type: ignore[misc]
+        hass: HomeAssistant,
+        trigger_config: ConfigType,
+        action,
+        name: str,
+    ):
+        """Back-compat wrapper for removed async_attach_trigger."""
+        return async_initialize_triggers(
+            hass,
+            [trigger_config],
+            action,
+            DOMAIN,
+            name,
+            log_cb=lambda *args, **kwargs: None,
+        )
+
+
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from .const import (
@@ -44,6 +71,7 @@ from .const import (
     CONF_BASE_MEDIA_PLAYER_ENTITY_ID,
     CONF_BROWSE_MEDIA_ENTITY_ID,
     CONF_BROWSE_MEDIA_SCRIPT,
+    CONF_DEFAULT_ENTITY_ID,
     CONF_MEDIA_NEXT_TRACK_SCRIPT,
     CONF_MEDIA_PAUSE_SCRIPT,
     CONF_MEDIA_PLAY_SCRIPT,
@@ -55,7 +83,6 @@ from .const import (
     CONF_PLAY_MEDIA_SCRIPT,
     CONF_REPEAT_SET_SCRIPT,
     CONF_SEARCH_MEDIA_ENTITY_ID,
-    CONF_SEARCH_MEDIA_SCRIPT,
     CONF_SERVICE_SCRIPTS,
     CONF_SHUFFLE_SET_SCRIPT,
     CONF_SOUND_MODE_SCRIPTS,
@@ -80,6 +107,7 @@ MEDIA_PLAYER_SCHEMA = vol.Schema(
         vol.Optional(CONF_UNIQUE_ID): cv.string,
         vol.Optional(CONF_ICON): cv.template,
         vol.Optional(CONF_PICTURE): cv.template,
+        vol.Optional(CONF_DEFAULT_ENTITY_ID): cv.entity_id,
         vol.Optional(CONF_VARIABLES): cv.SCRIPT_VARIABLES_SCHEMA,
         vol.Optional(CONF_ATTRIBUTES, default={}): cv.schema_with_slug_keys(
             cv.template
@@ -99,15 +127,37 @@ MEDIA_PLAYER_SCHEMA = vol.Schema(
         vol.Optional(CONF_SOURCE_SCRIPTS, default={}): cv.schema_with_slug_keys(
             cv.SCRIPT_SCHEMA
         ),
-        vol.Optional(CONF_TRIGGERS, default=[]): vol.All(
-            cv.ensure_list, [cv.TRIGGER_SCHEMA]
-        ),
+        vol.Optional(CONF_TRIGGERS, default=[]): cv.TRIGGER_SCHEMA,
     }
 )
 
 PLATFORM_SCHEMA = MEDIA_PLAYER_PLATFORM_SCHEMA.extend(
-    {vol.Required(CONF_MEDIA_PLAYERS): cv.schema_with_slug_keys(MEDIA_PLAYER_SCHEMA)}
+    {
+        vol.Optional(CONF_MEDIA_PLAYERS): cv.schema_with_slug_keys(MEDIA_PLAYER_SCHEMA),
+        **MEDIA_PLAYER_SCHEMA.schema,
+    }
 )
+
+
+def _get_template(
+    hass, base_entity_id: str | None, attribute: str | None = None
+) -> Template:
+    if base_entity_id is None:
+        return Template("{{ None }}", hass)
+    if attribute:
+        return Template(
+            f"{{{{ state_attr('{base_entity_id}', '{attribute}') }}}}", hass
+        )
+    return Template(f"{{{{ states('{base_entity_id}') }}}}", hass)
+
+
+def _get_available_template(
+    hass,
+    base_entity_id: str | None,
+) -> Template:
+    if base_entity_id is None:
+        return Template("{{ True }}", hass)
+    return Template(f"{{{{ has_value('{base_entity_id}') }}}}", hass)
 
 
 async def async_setup_platform(
@@ -125,10 +175,32 @@ async def async_setup_platform(
         # Called directly with platform config
         media_players_config = config.get(CONF_MEDIA_PLAYERS, {})
 
-    entities = []
-    for name, cfg in media_players_config.items():
-        entities.append(TemplateMediaPlayer(hass, cfg, name))
-    
+    if not media_players_config:
+        single_config = dict(config)
+        single_config.pop("platform", None)
+        if default_entity_id := single_config.get(CONF_DEFAULT_ENTITY_ID):
+            object_id = default_entity_id.partition(".")[2]
+        elif object_id_source := single_config.get(CONF_UNIQUE_ID):
+            object_id = slugify(object_id_source)
+        elif name_template := single_config.get(CONF_NAME):
+            object_id = slugify(getattr(name_template, "template", str(name_template)))
+        else:
+            object_id = "template_media_player"
+        media_players_config = {object_id: single_config}
+        _LOGGER.debug(
+            "Setting up template media player from flat config: %s", object_id
+        )
+    else:
+        _LOGGER.debug(
+            "Setting up template media players: %s",
+            ", ".join(media_players_config.keys()),
+        )
+
+    entities = [
+        TemplateMediaPlayer(hass, cfg, name)
+        for name, cfg in media_players_config.items()
+    ]
+
     async_add_entities(entities)
 
 
@@ -136,6 +208,7 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
     """A template-driven media player that behaves like native template entities."""
 
     _attr_should_poll = False
+    _entity_id_format = ENTITY_ID_FORMAT
 
     def __init__(
         self, hass: HomeAssistant, config: dict[str, Any], object_id: str
@@ -146,46 +219,46 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
             self, hass, config=config, unique_id=config.get(CONF_UNIQUE_ID, object_id)
         )
 
-        self._object_id = object_id
-        self._state_template: Template | None = config.get(CONF_STATE)
-        self._availability_template: Template | None = config.get(CONF_AVAILABILITY)
-        self._icon_template: Template | None = config.get(CONF_ICON)
-        self._picture_template: Template | None = config.get(CONF_PICTURE)
-        self._name_template: Template | None = config.get(CONF_NAME)
+        # Optional entity references for delegating functionality
+        self._base_entity_id: str | None = config.get(CONF_BASE_MEDIA_PLAYER_ENTITY_ID)
+        self._search_entity_id: str | None = config.get(CONF_SEARCH_MEDIA_ENTITY_ID)
+        self._browse_entity_id: str | None = config.get(CONF_BROWSE_MEDIA_ENTITY_ID)
 
-        self._attribute_templates: dict[str, Template] = config.get(
-            CONF_ATTRIBUTES, {}
+        self._object_id = object_id
+        self._state_template: Template | None = config.get(
+            CONF_STATE, _get_template(hass, self._base_entity_id)
+        )
+        self._availability_template: Template | None = config.get(
+            CONF_AVAILABILITY, _get_available_template(hass, self._base_entity_id)
+        )
+        self._icon_template: Template | None = config.get(
+            CONF_ICON, _get_template(hass, self._base_entity_id, "icon")
+        )
+        self._picture_template: Template | None = config.get(
+            CONF_PICTURE, _get_template(hass, self._base_entity_id, "picture")
+        )
+        self._name_template: Template | None = config.get(
+            CONF_NAME, _get_template(hass, self._base_entity_id, "name")
         )
 
-        # Optional entity references for delegating functionality
-        self._base_entity_id = config.get(CONF_BASE_MEDIA_PLAYER_ENTITY_ID)
-        self._search_entity_id = config.get(CONF_SEARCH_MEDIA_ENTITY_ID)
-        self._browse_entity_id = config.get(CONF_BROWSE_MEDIA_ENTITY_ID)
+        self._attribute_templates: dict[str, Template] = config.get(CONF_ATTRIBUTES, {})
 
         # Service scripts with slug keys
-        self._service_scripts = {
+        self._service_scripts: dict[str, Script] = {
             svc: Script(hass, script, object_id, DOMAIN)
             for svc, script in config.get(CONF_SERVICE_SCRIPTS, {}).items()
         }
-        self._source_scripts = {
+        self._source_scripts: dict[str, Script] = {
             src: Script(hass, script, object_id, DOMAIN)
             for src, script in config.get(CONF_SOURCE_SCRIPTS, {}).items()
         }
-        self._sound_mode_scripts = {
+        self._sound_mode_scripts: dict[str, Script] = {
             sm: Script(hass, script, object_id, DOMAIN)
             for sm, script in config.get(CONF_SOUND_MODE_SCRIPTS, {}).items()
         }
 
         # Trigger configuration for trigger-based updates
-        self._trigger_configs = config.get(CONF_TRIGGERS, [])
-
-        # State storage
-        self._state: MediaPlayerState | None = None
-        self._available: bool = True
-        self._icon: str | None = None
-        self._picture: str | None = None
-        self._name: str | None = None
-
+        self._trigger_configs: list[dict[str, Any]] = config.get(CONF_TRIGGERS, [])
         # Device class
         self._attr_device_class = config.get(CONF_DEVICE_CLASS)
 
@@ -194,31 +267,31 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
         # Register state template
         if self._state_template:
             self.add_template_attribute(
-                "_state",
+                "_attr_state",
                 self._state_template,
                 validator=lambda v: MediaPlayerState(v) if v else None,
                 none_on_template_error=True,
             )
-
+        print(self._state_template)
         # Register availability template
         if self._availability_template:
             self.add_template_attribute(
-                "_available",
+                "_attr_available",
                 self._availability_template,
                 validator=bool,
             )
 
         # Register icon template
         if self._icon_template:
-            self.add_template_attribute("_icon", self._icon_template)
+            self.add_template_attribute("_attr_icon", self._icon_template)
 
         # Register picture template
         if self._picture_template:
-            self.add_template_attribute("_picture", self._picture_template)
+            self.add_template_attribute("_attr_entity_picture", self._picture_template)
 
         # Register name template
         if self._name_template:
-            self.add_template_attribute("_name", self._name_template)
+            self.add_template_attribute("_attr_name", self._name_template)
 
         # Register custom attribute templates
         for attr, tmpl in self._attribute_templates.items():
@@ -273,45 +346,11 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
     # =================================================
 
     @property
-    def name(self) -> str | None:
-        """Return the name of the entity."""
-        if self._name:
-            return self._name
-        return self._object_id
-
-    @property
-    def available(self) -> bool:
-        """Return if the entity is available."""
-        return self._available
-
-    @property
-    def icon(self) -> str | None:
-        """Return the icon."""
-        return self._icon
-
-    @property
-    def entity_picture(self) -> str | None:
-        """Return the entity picture."""
-        return self._picture
-
-    @property
-    def state(self) -> MediaPlayerState | None:
-        """Return the state of the player."""
-        if self._state:
-            return self._state
-        # Fall back to base entity if no template state
-        if base := self._get_base_entity():
-            return base.state
-        return None
-
-    @property
-    def supported_features(self) -> MediaPlayerEntityFeature:
+    def supported_features(self) -> MediaPlayerEntityFeature:  # type: ignore
         """Flag media player features that are supported."""
         # Start with base entity features if available
         base = self._get_base_entity()
-        features = (
-            base.supported_features if base else MediaPlayerEntityFeature(0)
-        )
+        features = base.supported_features if base else MediaPlayerEntityFeature(0)
 
         # Add features based on configured scripts
         if CONF_TURN_ON_SCRIPT in self._service_scripts:
@@ -355,7 +394,7 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
         return features
 
     @property
-    def source_list(self) -> list[str] | None:
+    def source_list(self) -> list[str] | None:  # type: ignore
         """Return the list of available input sources."""
         if self._source_scripts:
             return list(self._source_scripts.keys())
@@ -364,7 +403,7 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
         return None
 
     @property
-    def sound_mode_list(self) -> list[str] | None:
+    def sound_mode_list(self) -> list[str] | None:  # type: ignore
         """Return the list of available sound modes."""
         if self._sound_mode_scripts:
             return list(self._sound_mode_scripts.keys())
@@ -373,9 +412,13 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
         return None
 
     @property
-    def extra_state_attributes(self) -> dict[str, Any]:
+    def extra_state_attributes(self) -> Mapping[str, Any] | None:  # type: ignore
         """Return the extra state attributes."""
-        attrs = {}
+        base_entity = self._get_base_entity()
+        if base_entity and base_entity.extra_state_attributes is not None:
+            attrs = {**base_entity.extra_state_attributes}
+        else:
+            attrs = {}
         for attr in self._attribute_templates:
             value = getattr(self, f"_attr_{attr}", None)
             if value is not None:
@@ -394,13 +437,12 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
 
     async def _run_script(
         self, script_key: str, variables: dict[str, Any] | None = None
-    ) -> None:
+    ) -> ScriptRunResult | None:
         """Run a service script or delegate to base entity."""
         script = self._service_scripts.get(script_key)
         if script:
             script_vars = {**(variables or {}), **self._render_script_variables()}
-            await script.async_run(script_vars, context=self._context)
-            return
+            return await script.async_run(script_vars, context=self._context)
 
         # Fall back to base entity if no script configured
         base = self._get_base_entity()
@@ -408,10 +450,16 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
             method_name = f"async_{script_key}"
             method = getattr(base, method_name, None)
             if method and callable(method):
-                if variables:
-                    await method(**variables)
+                if iscoroutinefunction(method):
+                    return await method(**(variables or {}))
                 else:
-                    await method()
+                    return cast(Optional[ScriptRunResult], method(**(variables or {})))
+
+        _LOGGER.debug(
+            "No script or base entity handler for %s on %s",
+            script_key,
+            self.entity_id,
+        )
 
     async def async_turn_on(self) -> None:
         """Turn the media player on."""
@@ -520,23 +568,29 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
         self,
         media_content_type: str | None = None,
         media_content_id: str | None = None,
-    ) -> BrowseMedia | None:
+    ) -> BrowseMedia:
         """Browse media."""
         # Try browse entity first
         if browse := self._get_browse_entity():
-            return await browse.async_browse_media(
-                media_content_type, media_content_id
-            )
+            return await browse.async_browse_media(media_content_type, media_content_id)
 
         # Try script
         if CONF_BROWSE_MEDIA_SCRIPT in self._service_scripts:
-            await self._run_script(
+            result = await self._run_script(
                 CONF_BROWSE_MEDIA_SCRIPT,
                 {
                     "media_content_type": media_content_type,
                     "media_content_id": media_content_id,
                 },
             )
-            return None
+            if result:
+                return BrowseMedia(**result.service_response)  # type: ignore
 
-        return None
+        return BrowseMedia(
+            media_class="",
+            media_content_id="",
+            media_content_type="",
+            title="",
+            can_play=False,
+            can_expand=False,
+        )

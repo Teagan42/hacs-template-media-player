@@ -1,0 +1,54 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read        # For checkout and comparing commits
+  pull-requests: write  # For creating/updating PR comments
+
+jobs:
+  validate-hacs:
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: HACS validation
+        uses: "hacs/action@main"
+        with:
+          category: "integration"
+          ignore: "brands"
+
+  validate-hassfest:
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: "actions/checkout@v4"
+      - uses: "home-assistant/actions/hassfest@master"
+
+  validate-python:
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: "actions/checkout@v4"
+      - uses: "actions/setup-python@v5"
+        with:
+          python-version: "3.14.2"
+      - uses: "astral-sh/setup-uv@v3"
+      - name: Install dependencies
+        run: uv sync --locked --all-extras --dev
+      - name: Ruff
+        run: uv run ruff check .
+      - name: Pytest + coverage
+        run: |
+          uv run pytest \
+            --junitxml=pytest.xml \
+            --cov=hacs-intentsity \
+            --cov-report=term-missing:skip-covered \
+            --cov-report=xml:coverage.xml \
+            | tee pytest-coverage.txt
+      - name: Coverage comment
+        uses: MishaKav/pytest-coverage-comment@main
+        with:
+          pytest-coverage-path: pytest-coverage.txt
+          junitxml-path: pytest.xml
+          hide-comment: false
+          github-token: ${{ secrets.GH_TOKEN }}
