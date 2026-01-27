@@ -117,9 +117,18 @@ async def async_setup_platform(
     discovery_info: DiscoveryInfoType | None = None,
 ) -> None:
     """Set up the template media players."""
+    # Support both direct platform config and discovery
+    if discovery_info is not None:
+        # Called via discovery from __init__.py
+        media_players_config = discovery_info.get(CONF_MEDIA_PLAYERS, {})
+    else:
+        # Called directly with platform config
+        media_players_config = config.get(CONF_MEDIA_PLAYERS, {})
+
     entities = []
-    for name, cfg in config[CONF_MEDIA_PLAYERS].items():
+    for name, cfg in media_players_config.items():
         entities.append(TemplateMediaPlayer(hass, cfg, name))
+    
     async_add_entities(entities)
 
 

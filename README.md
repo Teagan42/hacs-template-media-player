@@ -343,6 +343,47 @@ Scripts have access to these variables depending on the operation:
 - **shuffle_set**: `shuffle` (boolean)
 - **repeat_set**: `repeat` (string)
 
+## Reloading Configuration
+
+The component supports reloading configuration without restarting Home Assistant. This is useful when you make changes to your template media player configuration and want to apply them immediately.
+
+### Using the Reload Service
+
+Call the `template_media_player.reload` service:
+
+1. Go to Developer Tools > Services
+2. Select `template_media_player.reload`
+3. Click "Call Service"
+
+Or use YAML:
+
+```yaml
+service: template_media_player.reload
+```
+
+This will:
+- Remove all existing template media player entities
+- Reload the configuration from `configuration.yaml`
+- Create new entities with the updated configuration
+- Fire an `event_template_media_player_reloaded` event
+
+### Automation Example
+
+You can automate configuration reloads when the configuration file changes:
+
+```yaml
+automation:
+  - alias: "Reload Template Media Players on Config Change"
+    trigger:
+      - platform: event
+        event_type: folder_watcher
+        event_data:
+          event_type: modified
+          path: /config/configuration.yaml
+    action:
+      - service: template_media_player.reload
+```
+
 ## Troubleshooting
 
 ### Templates not updating
@@ -360,8 +401,14 @@ Scripts have access to these variables depending on the operation:
 ### Entity not showing up
 
 1. Check `configuration.yaml` syntax
-2. Restart Home Assistant
+2. Restart Home Assistant or use the reload service
 3. Check logs for errors
+
+### Configuration changes not applying
+
+1. Use the `template_media_player.reload` service to reload without restart
+2. If reload doesn't work, restart Home Assistant
+3. Check logs for configuration errors
 
 ## Contributing
 
