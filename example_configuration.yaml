@@ -1,0 +1,240 @@
+# Example Configuration for Template Media Player
+#
+# This file shows various examples of how to configure the template_media_player component.
+# Add these configurations to your Home Assistant configuration.yaml file.
+
+# Example 1: Simple Proxy Media Player
+# This creates a template media player that mirrors another media player
+media_player:
+  - platform: template_media_player
+    media_players:
+      proxy_player:
+        friendly_name: "Proxy Player"
+        unique_id: proxy_player_1
+        
+        # Mirror the state of another media player
+        value_template: "{{ states('media_player.living_room_speaker') }}"
+        
+        # Mirror availability
+        availability_template: "{{ states('media_player.living_room_speaker') != 'unavailable' }}"
+        
+        # Mirror media information
+        media_title_template: "{{ state_attr('media_player.living_room_speaker', 'media_title') }}"
+        media_artist_template: "{{ state_attr('media_player.living_room_speaker', 'media_artist') }}"
+        volume_level_template: "{{ state_attr('media_player.living_room_speaker', 'volume_level') }}"
+        
+        # Forward commands to the real player
+        turn_on:
+          service: media_player.turn_on
+          target:
+            entity_id: media_player.living_room_speaker
+            
+        turn_off:
+          service: media_player.turn_off
+          target:
+            entity_id: media_player.living_room_speaker
+            
+        volume_set:
+          service: media_player.volume_set
+          target:
+            entity_id: media_player.living_room_speaker
+          data:
+            volume_level: "{{ volume_level }}"
+
+# Example 2: Virtual Media Player using Input Helpers
+# This creates a virtual media player controlled by input helpers
+media_player:
+  - platform: template_media_player
+    media_players:
+      virtual_player:
+        friendly_name: "Virtual Player"
+        unique_id: virtual_player_1
+        
+        # State is controlled by an input_select
+        value_template: "{{ states('input_select.virtual_player_state') }}"
+        
+        # Volume is controlled by an input_number
+        volume_level_template: "{{ states('input_number.virtual_player_volume') | float }}"
+        
+        # Media info from input_text helpers
+        media_title_template: "{{ states('input_text.virtual_player_title') }}"
+        media_artist_template: "{{ states('input_text.virtual_player_artist') }}"
+        
+        # Actions update the input helpers
+        turn_on:
+          service: input_select.select_option
+          target:
+            entity_id: input_select.virtual_player_state
+          data:
+            option: "playing"
+            
+        turn_off:
+          service: input_select.select_option
+          target:
+            entity_id: input_select.virtual_player_state
+          data:
+            option: "off"
+            
+        pause:
+          service: input_select.select_option
+          target:
+            entity_id: input_select.virtual_player_state
+          data:
+            option: "paused"
+            
+        volume_set:
+          service: input_number.set_value
+          target:
+            entity_id: input_number.virtual_player_volume
+          data:
+            value: "{{ volume_level }}"
+
+# Example 3: Combined Multi-Room Player
+# This creates a template player that controls multiple players at once
+media_player:
+  - platform: template_media_player
+    media_players:
+      whole_house:
+        friendly_name: "Whole House Audio"
+        unique_id: whole_house_audio_1
+        
+        # Playing if any player is playing
+        value_template: >-
+          {% set players = ['media_player.living_room', 'media_player.bedroom', 'media_player.kitchen'] %}
+          {% if players | select('is_state', 'playing') | list | count > 0 %}
+            playing
+          {% elif players | select('is_state', 'paused') | list | count > 0 %}
+            paused
+          {% elif players | select('is_state', 'off') | list | count == players | count %}
+            off
+          {% else %}
+            idle
+          {% endif %}
+        
+        # Average volume across all players
+        volume_level_template: >-
+          {% set players = ['media_player.living_room', 'media_player.bedroom', 'media_player.kitchen'] %}
+          {% set volumes = players | map('state_attr', 'volume_level') | select('number') | list %}
+          {% if volumes | length > 0 %}
+            {{ (volumes | sum / volumes | length) | round(2) }}
+          {% else %}
+            0.5
+          {% endif %}
+        
+        # Show title from first playing player
+        media_title_template: >-
+          {% set players = ['media_player.living_room', 'media_player.bedroom', 'media_player.kitchen'] %}
+          {% set playing = players | select('is_state', 'playing') | list %}
+          {% if playing | length > 0 %}
+            {{ state_attr(playing[0], 'media_title') }}
+          {% endif %}
+        
+        # Turn on/off all players
+        turn_on:
+          - service: media_player.turn_on
+            target:
+              entity_id:
+                - media_player.living_room
+                - media_player.bedroom
+                - media_player.kitchen
+                
+        turn_off:
+          - service: media_player.turn_off
+            target:
+              entity_id:
+                - media_player.living_room
+                - media_player.bedroom
+                - media_player.kitchen
+        
+        # Set volume on all players
+        volume_set:
+          - service: media_player.volume_set
+            target:
+              entity_id:
+                - media_player.living_room
+                - media_player.bedroom
+                - media_player.kitchen
+            data:
+              volume_level: "{{ volume_level }}"
+        
+        # Play media on all players
+        play_media:
+          - service: media_player.play_media
+            target:
+              entity_id:
+                - media_player.living_room
+                - media_player.bedroom
+                - media_player.kitchen
+            data:
+              media_content_type: "{{ media_type }}"
+              media_content_id: "{{ media_id }}"
+
+# Example 4: Advanced Template with Conditions
+# This player modifies behavior based on time of day
+media_player:
+  - platform: template_media_player
+    media_players:
+      smart_player:
+        friendly_name: "Smart Player"
+        unique_id: smart_player_1
+        
+        value_template: "{{ states('media_player.bedroom_speaker') }}"
+        
+        # Lower volume at night
+        volume_level_template: >-
+          {% set current = state_attr('media_player.bedroom_speaker', 'volume_level') | float %}
+          {% if now().hour >= 22 or now().hour < 7 %}
+            {{ [current, 0.3] | min }}
+          {% else %}
+            {{ current }}
+          {% endif %}
+        
+        media_title_template: "{{ state_attr('media_player.bedroom_speaker', 'media_title') }}"
+        
+        turn_on:
+          service: media_player.turn_on
+          target:
+            entity_id: media_player.bedroom_speaker
+        
+        # Volume set respects night time limit
+        volume_set:
+          service: media_player.volume_set
+          target:
+            entity_id: media_player.bedroom_speaker
+          data:
+            volume_level: >-
+              {% if now().hour >= 22 or now().hour < 7 %}
+                {{ [volume_level, 0.3] | min }}
+              {% else %}
+                {{ volume_level }}
+              {% endif %}
+
+# Required Input Helpers for Example 2
+# Add these to your configuration.yaml:
+#
+# input_select:
+#   virtual_player_state:
+#     name: Virtual Player State
+#     options:
+#       - "off"
+#       - "playing"
+#       - "paused"
+#       - "idle"
+#     initial: "off"
+#
+# input_number:
+#   virtual_player_volume:
+#     name: Virtual Player Volume
+#     min: 0
+#     max: 1
+#     step: 0.01
+#     initial: 0.5
+#
+# input_text:
+#   virtual_player_title:
+#     name: Virtual Player Title
+#     max: 255
+#
+#   virtual_player_artist:
+#     name: Virtual Player Artist
+#     max: 255
