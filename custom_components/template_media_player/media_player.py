@@ -282,11 +282,24 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
             self.add_template_attribute("_attr_name", self._name_template)
 
         for attr, tmpl in (self._attribute_templates or {}).items():
+            self._add_attribute_template(attr, tmpl)
             self.add_template_attribute(
                 f"_attr_{attr}",
                 tmpl,
                 none_on_template_error=True,
             )
+
+        if base_entity := self._get_base_entity():
+            for attr in base_entity.state_attributes:
+                if attr in (self._attribute_templates or {}):
+                    continue
+                template = _get_template(self.hass, self._base_entity_id, attr)
+                self._add_attribute_template(attr, template)
+                self.add_template_attribute(
+                    f"_attr_{attr}",
+                    template,
+                    none_on_template_error=True,
+                )
 
         # Set up triggers for trigger-based updates (like native template entities)
         if self._trigger_configs:
