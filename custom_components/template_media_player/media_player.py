@@ -160,6 +160,16 @@ def _get_available_template(
     return Template(f"{{{{ has_value('{base_entity_id}') }}}}", hass)
 
 
+def _derive_object_id(config: dict[str, Any]) -> str:
+    if default_entity_id := config.get(CONF_DEFAULT_ENTITY_ID):
+        return default_entity_id.partition(".")[2]
+    if object_id_source := config.get(CONF_UNIQUE_ID):
+        return slugify(object_id_source)
+    if name_template := config.get(CONF_NAME):
+        return slugify(getattr(name_template, "template", str(name_template)))
+    return "template_media_player"
+
+
 async def async_setup_platform(
     hass: HomeAssistant,
     config: ConfigType,
@@ -178,14 +188,7 @@ async def async_setup_platform(
     if not media_players_config:
         single_config = dict(config)
         single_config.pop("platform", None)
-        if default_entity_id := single_config.get(CONF_DEFAULT_ENTITY_ID):
-            object_id = default_entity_id.partition(".")[2]
-        elif object_id_source := single_config.get(CONF_UNIQUE_ID):
-            object_id = slugify(object_id_source)
-        elif name_template := single_config.get(CONF_NAME):
-            object_id = slugify(getattr(name_template, "template", str(name_template)))
-        else:
-            object_id = "template_media_player"
+        object_id = _derive_object_id(single_config)
         media_players_config = {object_id: single_config}
         _LOGGER.debug(
             "Setting up template media player from flat config: %s", object_id
@@ -202,6 +205,27 @@ async def async_setup_platform(
     ]
 
     async_add_entities(entities)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up template media player from a config entry."""
+    config = dict(entry.options or entry.data)
+    if not config:
+        _LOGGER.error("Config entry is missing data/options")
+        return
+
+    try:
+        config = MEDIA_PLAYER_SCHEMA(config)
+    except vol.Invalid as err:
+        _LOGGER.error("Invalid config entry data: %s", err)
+        return
+
+    object_id = _derive_object_id(config)
+    async_add_entities([TemplateMediaPlayer(hass, config, object_id)])
 
 
 class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
