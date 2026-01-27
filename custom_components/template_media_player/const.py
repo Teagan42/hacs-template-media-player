@@ -1,0 +1,50 @@
+"""Constants for Template Media Player."""
+
+DOMAIN = "template_media_player"
+
+# Configuration
+CONF_MEDIA_PLAYERS = "media_players"
+
+# Template attributes
+CONF_VALUE_TEMPLATE = "value_template"
+CONF_ICON_TEMPLATE = "icon_template"
+CONF_ENTITY_PICTURE_TEMPLATE = "entity_picture_template"
+CONF_AVAILABILITY_TEMPLATE = "availability_template"
+
+# Media player attributes
+CONF_SOURCE_TEMPLATE = "source_template"
+CONF_SOURCE_LIST_TEMPLATE = "source_list_template"
+CONF_VOLUME_LEVEL_TEMPLATE = "volume_level_template"
+CONF_IS_VOLUME_MUTED_TEMPLATE = "is_volume_muted_template"
+CONF_MEDIA_TITLE_TEMPLATE = "media_title_template"
+CONF_MEDIA_ARTIST_TEMPLATE = "media_artist_template"
+CONF_MEDIA_ALBUM_NAME_TEMPLATE = "media_album_name_template"
+CONF_MEDIA_CONTENT_ID_TEMPLATE = "media_content_id_template"
+CONF_MEDIA_CONTENT_TYPE_TEMPLATE = "media_content_type_template"
+CONF_MEDIA_DURATION_TEMPLATE = "media_duration_template"
+CONF_MEDIA_POSITION_TEMPLATE = "media_position_template"
+CONF_MEDIA_POSITION_UPDATED_AT_TEMPLATE = "media_position_updated_at_template"
+CONF_MEDIA_IMAGE_URL_TEMPLATE = "media_image_url_template"
+CONF_REPEAT_TEMPLATE = "repeat_template"
+CONF_SHUFFLE_TEMPLATE = "shuffle_template"
+CONF_APP_NAME_TEMPLATE = "app_name_template"
+CONF_SOUND_MODE_TEMPLATE = "sound_mode_template"
+CONF_SOUND_MODE_LIST_TEMPLATE = "sound_mode_list_template"
+
+# Actions
+CONF_TURN_ON_ACTION = "turn_on"
+CONF_TURN_OFF_ACTION = "turn_off"
+CONF_PLAY_MEDIA_ACTION = "play_media"
+CONF_PAUSE_ACTION = "pause"
+CONF_STOP_ACTION = "stop"
+CONF_VOLUME_UP_ACTION = "volume_up"
+CONF_VOLUME_DOWN_ACTION = "volume_down"
+CONF_VOLUME_SET_ACTION = "volume_set"
+CONF_VOLUME_MUTE_ACTION = "volume_mute"
+CONF_MEDIA_PREVIOUS_TRACK_ACTION = "media_previous_track"
+CONF_MEDIA_NEXT_TRACK_ACTION = "media_next_track"
+CONF_MEDIA_SEEK_ACTION = "media_seek"
+CONF_SELECT_SOURCE_ACTION = "select_source"
+CONF_SELECT_SOUND_MODE_ACTION = "select_sound_mode"
+CONF_SHUFFLE_SET_ACTION = "shuffle_set"
+CONF_REPEAT_SET_ACTION = "repeat_set"
