@@ -205,6 +205,9 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
         self, hass: HomeAssistant, config: dict[str, Any], object_id: str
     ) -> None:
         """Initialize the template media player."""
+        config = dict(config)
+        config.setdefault(CONF_ATTRIBUTES, {})
+        config.setdefault(CONF_VARIABLES, {})
 
         # Optional entity references for delegating functionality
         self._base_entity_id: str | None = config.get(CONF_BASE_MEDIA_PLAYER_ENTITY_ID)
@@ -220,11 +223,16 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
                 continue
             config[CONF_VARIABLES] = {
                 var: Template(val, hass),
-                **config.get(CONF_VARIABLES, {}),
+                **config[CONF_VARIABLES],
             }
 
-        if base_entity := self._get_base_entity():
-            for attr in base_entity.state_attributes:
+        base_entity = None
+        if self._base_entity_id:
+            base_entity = hass.data.get(MEDIA_PLAYER_DOMAIN, {}).get_entity(
+                self._base_entity_id
+            )
+        if base_entity:
+            for attr in getattr(base_entity, "state_attributes", {}) or {}:
                 if attr in config[CONF_ATTRIBUTES]:
                     continue
                 config[CONF_ATTRIBUTES][attr] = _get_template(
@@ -232,14 +240,19 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
                 )
 
         self._object_id = object_id
-        config = {
+        defaults = {
             CONF_STATE: _get_template(hass, self._base_entity_id),
             CONF_AVAILABILITY: _get_available_template(hass, self._base_entity_id),
-            CONF_ICON: _get_template(hass, self._base_entity_id, "icon"),
-            CONF_PICTURE: _get_template(hass, self._base_entity_id, "entity_picture"),
-            CONF_NAME: _get_template(hass, self._base_entity_id, "name"),
-            **config,
         }
+        if self._base_entity_id:
+            defaults |= {
+                CONF_ICON: _get_template(hass, self._base_entity_id, "icon"),
+                CONF_PICTURE: _get_template(
+                    hass, self._base_entity_id, "entity_picture"
+                ),
+                CONF_NAME: _get_template(hass, self._base_entity_id, "name"),
+            }
+        config = {**defaults, **config}
 
         # Service scripts with slug keys
         self._service_scripts: dict[str, Script] = {
@@ -262,6 +275,7 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
         TemplateEntity.__init__(
             self, hass, config=config, unique_id=config.get(CONF_UNIQUE_ID, object_id)
         )
+        self.setup_state_template(CONF_STATE, "_attr_state")
 
     async def async_added_to_hass(self) -> None:
         """Register template tracking and optional triggers."""
@@ -283,27 +297,30 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
 
     def _get_base_entity(self) -> MediaPlayerEntity | None:
         """Get the base media player entity if configured."""
-        if not self._base_entity_id:
+        if not self._base_entity_id or self.hass is None:
             return None
-        return self.hass.data.get(MEDIA_PLAYER_DOMAIN, {}).get_entity(
-            self._base_entity_id
-        )
+        component = self.hass.data.get(MEDIA_PLAYER_DOMAIN)
+        if component is None:
+            return None
+        return component.get_entity(self._base_entity_id)
 
     def _get_search_entity(self) -> MediaPlayerEntity | None:
         """Get the search media player entity if configured."""
-        if not self._search_entity_id:
+        if not self._search_entity_id or self.hass is None:
             return None
-        return self.hass.data.get(MEDIA_PLAYER_DOMAIN, {}).get_entity(
-            self._search_entity_id
-        )
+        component = self.hass.data.get(MEDIA_PLAYER_DOMAIN)
+        if component is None:
+            return None
+        return component.get_entity(self._search_entity_id)
 
     def _get_browse_entity(self) -> MediaPlayerEntity | None:
         """Get the browse media player entity if configured."""
-        if not self._browse_entity_id:
+        if not self._browse_entity_id or self.hass is None:
             return None
-        return self.hass.data.get(MEDIA_PLAYER_DOMAIN, {}).get_entity(
-            self._browse_entity_id
-        )
+        component = self.hass.data.get(MEDIA_PLAYER_DOMAIN)
+        if component is None:
+            return None
+        return component.get_entity(self._browse_entity_id)
 
     # =================================================
     # PROPERTIES
@@ -388,14 +405,13 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
     def extra_state_attributes(self) -> Mapping[str, Any] | None:  # type: ignore
         """Return the extra state attributes."""
         base_entity = self._get_base_entity()
-        if base_entity and base_entity.state_attributes is not None:
-            attrs = {**base_entity.state_attributes}
-        else:
-            attrs = {}
-        for attr in self._attribute_templates or {}:
-            value = getattr(self, f"_attr_{attr}", None)
+        base_attrs = {}
+        if base_entity:
+            base_attrs = getattr(base_entity, "state_attributes", {}) or {}
+        attrs = {**base_attrs}
+        for key, value in (getattr(self, "_attr_extra_state_attributes", {}) or {}).items():
             if value is not None:
-                attrs[attr] = value
+                attrs[key] = value
         return attrs
 
     # =================================================
