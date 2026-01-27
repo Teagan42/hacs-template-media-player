@@ -76,6 +76,10 @@ def validate_structure():
             print(f"✅ {py_file} has valid syntax")
         except SyntaxError as e:
             errors.append(f"❌ Syntax error in {py_file}: {e}")
+        except FileNotFoundError:
+            errors.append(f"❌ File not found: {py_file}")
+        except Exception as e:
+            errors.append(f"❌ Error reading {py_file}: {e}")
     
     # Check entity.py imports native TemplateEntity
     try:

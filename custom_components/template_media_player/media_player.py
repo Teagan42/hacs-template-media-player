@@ -283,7 +283,8 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
             return None
         
         try:
-            return template.async_render()
+            # Use render() instead of async_render() since this is called from properties
+            return template.render()
         except TemplateError as err:
             _LOGGER.error("Error rendering template: %s", err)
             return None
