@@ -41,7 +41,7 @@ jobs:
         run: |
           uv run pytest \
             --junitxml=pytest.xml \
-            --cov=hacs-template-media-player \
+            --cov=custom_components.template_media_player \
             --cov-report=term-missing:skip-covered \
             --cov-report=xml:coverage.xml \
             | tee pytest-coverage.txt

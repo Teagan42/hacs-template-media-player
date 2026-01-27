@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-# Import the native TemplateEntity from Home Assistant core
-from homeassistant.components.template.entity import TemplateEntity
+try:
+    from homeassistant.components.template.template_entity import TemplateEntity
+except ImportError:  # HA <= 2025.12
+    from homeassistant.components.template.entity import TemplateEntity
 
-# Re-export for backward compatibility
 __all__ = ["TemplateEntity"]
