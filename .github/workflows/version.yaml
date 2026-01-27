@@ -1,0 +1,84 @@
+name: Version
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read        # For checkout and comparing commits
+  pull-requests: write  # For creating/updating PR comments
+
+jobs:
+  bump-version:
+    if: |
+      github.event_name == 'pull_request' &&
+      github.base_ref == 'main' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: "ubuntu-latest"
+    permissions:
+      contents: write
+    steps:
+      - uses: "actions/checkout@v4"
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref }}
+      - uses: "astral-sh/setup-uv@v3"
+      - name: Install dependencies
+        run: uv sync --locked --all-extras --dev
+      - name: Check if pyproject.toml already changed
+        id: diff
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          if git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q "^pyproject.toml$"; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Bump version in pyproject.toml
+        if: steps.diff.outputs.changed == 'false'
+        run: |
+          python - <<'PY'
+          import re
+          import tomllib
+          from pathlib import Path
+
+          pyproject_path = Path("pyproject.toml")
+          pyproject_text = pyproject_path.read_text()
+          pyproject = tomllib.loads(pyproject_text)
+          version = pyproject["project"]["version"]
+
+          parts = version.split(".")
+          if len(parts) != 3 or not all(p.isdigit() for p in parts):
+              raise SystemExit(f"Unsupported version format: {version}")
+          major, minor, patch = (int(p) for p in parts)
+          bumped = f"{major}.{minor}.{patch + 1}"
+
+          pyproject_text = re.sub(
+              r'(?m)^version = ".*"$',
+              f'version = "{bumped}"',
+              pyproject_text,
+          )
+          pyproject_path.write_text(pyproject_text)
+          PY
+      - name: Commit version bump
+        if: steps.diff.outputs.changed == 'false'
+        run: |
+          if git diff --quiet; then
+            echo "No version changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          VERSION=$(python - <<'PY'
+          import tomllib
+          from pathlib import Path
+          pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+          print(pyproject["project"]["version"])
+          PY
+          )
+          uv sync
+          uv lock
+          git add uv.lock
+          git add pyproject.toml
+          git commit -m "chore(release): bump version to ${VERSION}"
+          git push origin HEAD:${{ github.head_ref }}

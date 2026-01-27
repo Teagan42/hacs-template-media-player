@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - pyproject.toml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version from pyproject
+        id: version
+        run: |
+          python - <<'PY'
+          import tomllib
+          from pathlib import Path
+          import os
+
+          pyproject = tomllib.loads(Path('pyproject.toml').read_text())
+          version = pyproject['project']['version']
+          Path('version.txt').write_text(version)
+
+          output_path = os.environ.get('GITHUB_OUTPUT')
+          if output_path:
+              with open(output_path, 'a', encoding='utf-8') as handle:
+                  handle.write(f"version={version}\n")
+          PY
+
+      - name: Create tag
+        run: |
+          VERSION=$(cat version.txt)
+          TAG="v${VERSION}"
+          git config --global user.email "github-bot@github.com"
+          git config --global user.name "github-bot"
+          if git rev-parse "${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists"
+            exit 0
+          fi
+          git tag -a "${TAG}" -m "Release ${TAG}"
+          git push --tags
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          generate_release_notes: true
