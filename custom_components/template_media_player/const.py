@@ -71,11 +71,11 @@ PLATFORM_CONFIG_SCHEMA = vol.Schema(
         vol.Optional(CONF_SERVICE_SCRIPTS, default={}): cv.schema_with_slug_keys(
             cv.SCRIPT_SCHEMA
         ),
-        vol.Optional(CONF_SOUND_MODE_SCRIPTS, default={}): cv.schema_with_slug_keys(
-            cv.SCRIPT_SCHEMA
+        vol.Optional(CONF_SOUND_MODE_SCRIPTS, default={}): vol.Schema(
+            {cv.string: cv.SCRIPT_SCHEMA}
         ),
-        vol.Optional(CONF_SOURCE_SCRIPTS, default={}): cv.schema_with_slug_keys(
-            cv.SCRIPT_SCHEMA
+        vol.Optional(CONF_SOURCE_SCRIPTS, default={}): vol.Schema(
+            {cv.string: cv.SCRIPT_SCHEMA}
         ),
         vol.Optional(CONF_TRIGGERS, default=[]): cv.TRIGGER_SCHEMA,
     }
