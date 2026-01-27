@@ -1,0 +1,6 @@
+# Services for Template Media Player component
+
+reload:
+  name: Reload
+  description: Reload the template media player configuration from YAML.
+  fields: {}

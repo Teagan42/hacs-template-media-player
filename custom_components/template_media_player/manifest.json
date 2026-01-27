@@ -1,0 +1,11 @@
+{
+  "domain": "template_media_player",
+  "name": "Template Media Player",
+  "codeowners": ["@Teagan42"],
+  "config_flow": false,
+  "documentation": "https://github.com/Teagan42/hacs-template-media-player",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/Teagan42/hacs-template-media-player/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}
