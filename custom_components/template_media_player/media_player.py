@@ -215,7 +215,7 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
             CONF_BASE_MEDIA_PLAYER_ENTITY_ID: self._base_entity_id,
             CONF_SEARCH_MEDIA_ENTITY_ID: self._search_entity_id,
             CONF_BROWSE_MEDIA_ENTITY_ID: self._browse_entity_id,
-        }:
+        }.items():
             if val is None:
                 continue
             config[CONF_VARIABLES] = {
