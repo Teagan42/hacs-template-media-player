@@ -506,10 +506,8 @@ class TemplateMediaPlayer(TemplateEntity, MediaPlayerEntity):
 
     async def async_media_play(self) -> None:
         """Play the media player."""
-        # Using turn_on for play if pause is not available
-        if script := self._scripts.get("pause"):
-            await script.async_run(context=self._context)
-        elif script := self._scripts.get("turn_on"):
+        # Use turn_on for play
+        if script := self._scripts.get("turn_on"):
             await script.async_run(context=self._context)
 
     async def async_media_stop(self) -> None:
